@@ -30,6 +30,7 @@ from urllib.parse import parse_qs
 import config
 import models
 import utils
+from icecream import ic
 
 app = Flask(__name__)
 CORS(app, origins=config.ORIGINS)
@@ -39,11 +40,11 @@ api = Api(app)
 def p2p(call):
     def inner(*args):
         qs = parse_qs(request.query_string)
-        qs = {k: v[0] for k, v in qs.items()}
+        qs = {k.decode(): v[0].decode() for k, v in qs.items()}
         if 'cid' in qs.keys():
             client = models.clients[qs['cid']]
             if isinstance(client, (models.Client,)):
-                data = call(client, *args)
+                data = json.dumps(call(client, *args))
                 data = client.encrypt_data(data)
                 return {
                     'encrypted': True,
@@ -54,6 +55,16 @@ def p2p(call):
 
     return inner
 
+
+@app.after_request
+def basic_api(rep):
+    if isinstance(rep, (str,)):
+        return rep
+    else:
+        try:
+            return json.dumps(rep)
+        except TypeError:
+            raise models.ServerDataParsingError
 
 
 @app.errorhandler(werkzeug.exceptions.HTTPException)
@@ -112,8 +123,8 @@ api.add_resource(Client, '/client')
 @app.route('/client/login', methods=['POST'])
 @p2p
 def clientLogin(client: models.Client):
-    print(request.data)
-    login_user = utils.parse_request_data(models.LoginUser, request.data)
+    ic(request.form, request.data, request.get_data())
+    # login_user = utils.parse_request_data(models.LoginUser, request.form)
     print(f'{client.client_id} 尝试登录!')
     return {
         'success': True

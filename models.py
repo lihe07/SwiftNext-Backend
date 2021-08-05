@@ -167,3 +167,12 @@ class LoginFailed(werkzeug.exceptions.HTTPException):
     code = 403
     description = '邮箱或密码错误!'
     error = 'LoginFailed'
+
+
+class ServerDataParsingError(werkzeug.exceptions.HTTPException):
+    """
+    服务器数据解析出错
+    """
+    code = 500
+    description = '服务器数据解析出错'
+    error = 'ServerDataParsingError'
