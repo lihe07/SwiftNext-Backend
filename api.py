@@ -124,8 +124,7 @@ api.add_resource(Client, '/client')
 @app.route('/client/login', methods=['POST'])
 @p2p
 def clientLogin(client: models.Client):
-    ic(request.form, request.data, request.get_data())
-    login_user = utils.parse_request_data(models.LoginUser, dict(request.form))
+    login_user = utils.parse_request_data(models.LoginUser, request.form)
     print(f'{client.client_id} 尝试登录!')
     ic(login_user)
     return {

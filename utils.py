@@ -5,6 +5,7 @@ import uuid
 from Crypto.Cipher import AES
 import base64
 from pydantic import BaseModel
+from werkzeug.datastructures import ImmutableMultiDict
 
 
 def encrypt_password(password_str: str) -> str:
@@ -82,5 +83,5 @@ def decrypt(data, password):
     return data
 
 
-def parse_request_data(model, data):
-    return model(**data)
+def parse_request_data(model, data: ImmutableMultiDict):
+    return model(**dict(data))
