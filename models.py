@@ -1,10 +1,10 @@
 # -*- encoding: utf-8 -*-
+import werkzeug.exceptions
 from pydantic import BaseModel
 from typing import Optional, List, Any
 import threading
 import time
 import logging
-from fastapi import HTTPException
 
 import config
 import utils
@@ -47,16 +47,6 @@ class Client(BaseModel):
         """
         data = utils.encrypt(json.dumps(data), self.get_password())
         return data
-
-
-class _Client(BaseModel):
-    cid: str
-
-    def __init__(self, cid: str):
-        if clients[cid]:
-            self.client = clients[cid]
-        else:
-            raise HTTPException(status_code=403, detail='client id错误!', error_code=2)
 
 
 class ClientCache(threading.Thread):
@@ -157,3 +147,23 @@ class ClientCache(threading.Thread):
 
 
 clients = ClientCache()
+
+
+# 一些错误
+
+class ClientInvalid(werkzeug.exceptions.HTTPException):
+    """
+    client id无效
+    """
+    code = 403
+    error = 'ClientInvalid',
+    description = '会话不存在或已过期!'
+
+
+class LoginFailed(werkzeug.exceptions.HTTPException):
+    """
+    登录失败
+    """
+    code = 403
+    description = '邮箱或密码错误!'
+    error = 'LoginFailed'

@@ -20,71 +20,101 @@
 # |                                                                              |___/                   |#
 # |                                                                                                      |#
 # ========================================================================================================#
+import json
 
-from flask import Flask
-from flask-
+import werkzeug.exceptions
+from flask import Flask, request
+from flask_cors import CORS
+from flask_restful import Api, Resource
+from urllib.parse import parse_qs
 import config
 import models
+import utils
 
-api = FastAPI()
-api.add_middleware(CORSMiddleware, **{
-    'allow_origins': config.ORIGINS,
-    'allow_credentials': True,
-    'allow_methods': ['*'],
-    'allow_headers': ['*']
-})
+app = Flask(__name__)
+CORS(app, origins=config.ORIGINS)
+api = Api(app)
 
 
-# @api.middleware('http')
-# async def check_p2p(req: Request, call_next):
-#     req.query_params.keys()
-#     if 'cid' in req.query_params.keys():
-#         # P2P模式
-#         client_id = req.query_params.get('cid')
-#         client = models.clients[client_id]
-#         if isinstance(client, (models.Client,)):
-#             #  clientID有效
-#             # params = req.query_params.__dict__
-#             # params['client'] = client
-#             # req.query_params = params
-#             rep = await call_next(client, req)
-#             print(rep)
-#             return rep
-#     else:
-#         rep = await call_next(req)
-#         return rep
+def p2p(call):
+    def inner(*args):
+        qs = parse_qs(request.query_string)
+        qs = {k: v[0] for k, v in qs.items()}
+        if 'cid' in qs.keys():
+            client = models.clients[qs['cid']]
+            if isinstance(client, (models.Client,)):
+                data = call(client, *args)
+                data = client.encrypt_data(data)
+                return {
+                    'encrypted': True,
+                    'data': data
+                }
+        # client 不合法
+        raise models.ClientInvalid
+
+    return inner
 
 
-@api.get('/')
-def index(req: Request):
-    return {
-        'msg': 'Welcome to SwiftNext!',
-        'ip': req.client.host
-    }
 
+@app.errorhandler(werkzeug.exceptions.HTTPException)
+def errorhandler(err):
+    """
+    错误包装器 返回一个json的错误报告
+    :param err: 错误
+    :return: json报告
+    """
+    response = err.get_response()
+    if hasattr(err, 'error'):
+        response.data = json.dumps({
+            'code': err.code,
+            'description': err.description,
+            'error': err.error
+        })
+    else:
+        response.data = json.dumps({
+            'code': err.code,
+            'description': err.description,
+        })
+    response.content_type = "application/json"
+    return response
+
+
+class HelloWorld(Resource):
+    def get(self) -> dict:
+        return {
+            'msg': 'Welcome to SwiftNext!',
+            'ip': request.remote_addr
+        }
+
+
+api.add_resource(HelloWorld, '/')
 
 """
  | Part.1    /client         客户端类API
-    | 1.1    /client/new     申请一个新的client
+    | 1.1    /client     申请一个新的client
 """
 
 
-@api.get('/client/new')
-def clientNew() -> dict:
-    return {
-        'client_id': models.clients.create_new_client().client_id
-    }
+class Client(Resource):
+    def get(self) -> dict:
+        return {
+            'client_id': models.clients.create_new_client().client_id
+        }
 
+
+api.add_resource(Client, '/client')
 
 """
     | 1.2    /client/login   申请登录状态
 """
 
 
-@api.post('/client/login')
-def clientLogin(login_user: models.LoginUser, client: models._Client = Query(None)):
-    print(f'{client.client.client_id} 尝试登录!')
-    print(login_user.dict())
+@app.route('/client/login', methods=['POST'])
+@p2p
+def clientLogin(client: models.Client):
+    print(request.data)
+    login_user = utils.parse_request_data(models.LoginUser, request.data)
+    print(f'{client.client_id} 尝试登录!')
     return {
         'success': True
     }

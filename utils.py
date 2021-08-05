@@ -1,11 +1,10 @@
 # -*- encoding: utf-8 -*-
 import gzip
 import hashlib
-import json
-import time
 import uuid
 from Crypto.Cipher import AES
 import base64
+from pydantic import BaseModel
 
 
 def encrypt_password(password_str: str) -> str:
@@ -79,3 +78,7 @@ def decrypt(data, password):
     data = cipher.decrypt(data)
     data = base64.b16decode(unpad(data)).decode()
     return data
+
+
+def parse_request_data(model, data):
+    return model(**data)
