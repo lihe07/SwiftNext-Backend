@@ -63,7 +63,9 @@ def encrypt(data: str, password: str) -> str:
     :return: 加密后的数据
     """
     bs = AES.block_size
-    data = base64.b16encode(data.encode()).decode()  # 将data转换为base16编码
+    if isinstance(data, (str,)):
+        data = data.encode()
+    data = base64.b16encode(data).decode()  # 将data转换为base16编码
     data = pad(data, bs)
     cipher = AES.new(password.encode(), AES.MODE_ECB)
     data = cipher.encrypt(data)

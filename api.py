@@ -23,7 +23,7 @@
 import json
 
 import werkzeug.exceptions
-from flask import Flask, request
+from flask import Flask, request, Response, jsonify
 from flask_cors import CORS
 from flask_restful import Api, Resource
 from urllib.parse import parse_qs
@@ -44,7 +44,7 @@ def p2p(call):
         if 'cid' in qs.keys():
             client = models.clients[qs['cid']]
             if isinstance(client, (models.Client,)):
-                data = json.dumps(call(client, *args))
+                data = call(client, *args)
                 data = client.encrypt_data(data)
                 return {
                     'encrypted': True,
@@ -57,14 +57,15 @@ def p2p(call):
 
 
 @app.after_request
-def basic_api(rep):
-    if isinstance(rep, (str,)):
+def basic_api(rep: Response):
+    if rep.mimetype == 'application/json':
         return rep
     else:
         try:
-            return json.dumps(rep)
+            content = rep.get_data().decode()
+            return jsonify(content)
         except TypeError:
-            raise models.ServerDataParsingError
+            return errorhandler(models.ServerDataParsingError)
 
 
 @app.errorhandler(werkzeug.exceptions.HTTPException)
@@ -124,8 +125,10 @@ api.add_resource(Client, '/client')
 @p2p
 def clientLogin(client: models.Client):
     ic(request.form, request.data, request.get_data())
-    # login_user = utils.parse_request_data(models.LoginUser, request.form)
+    login_user = utils.parse_request_data(models.LoginUser, dict(request.form))
     print(f'{client.client_id} 尝试登录!')
+    ic(login_user)
     return {
         'success': True
     }
+
