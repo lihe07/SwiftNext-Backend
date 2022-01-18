@@ -1,0 +1,4 @@
+GET https://api.imlihe.com/
+Accept: application/json
+
+### 用于测试联通性

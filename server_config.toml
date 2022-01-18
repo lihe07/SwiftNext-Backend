@@ -4,5 +4,6 @@ address = "127.0.0.1:8000"
 [data]
 database = "mongodb://localhost:27017/test"
 
+
 [misc]
-log_level = "info"
+log_level = "debug"
