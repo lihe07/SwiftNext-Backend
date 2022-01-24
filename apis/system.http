@@ -1,0 +1,20 @@
+POST http://localhost:8000/users/check_email/
+Content-Type: application/json
+Origin: https://www.bwrrc.org
+
+{
+  "email": "li@imlihe.com"
+}
+
+###
+POST http://localhost:8000/system/encrypt
+Content-Type: application/json
+Origin: https://www.bwrrc.org
+
+{
+  "content": "Hello World"
+}
+
+### 加密一些明文
+
+
