@@ -30,7 +30,7 @@ def perm(level):
     def wrapper(func):
         async def _(request):
             # 检验权限
-            if request.ctx.session.permission in level:
+            if request.ctx.session['permission'] in level:
                 return await func(request)
             else:
                 return json({
@@ -41,7 +41,7 @@ def perm(level):
                     },
                     "description": {
                         "allowed": level,
-                        "current": request.ctx.session.permission
+                        "current": request.ctx.session['permission']
                     }
                 }, 403)
 

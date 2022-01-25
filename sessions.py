@@ -6,6 +6,7 @@ import time
 from concurrent.futures._base import CancelledError
 from datetime import datetime
 
+from bson import ObjectId
 from sanic import Sanic, Request, HTTPResponse, json
 import uuid
 
@@ -67,6 +68,13 @@ async def session_manager(request: Request):
             except CancelledError:
                 logger.warning("在为会话续命时发生了异常")
                 await database().sessions.insert_one(session)
+
+            if 'user' in session.keys():
+                # 如果这个session是登录的，为其设置用户信息
+                user = await database().users.find_one({"_id": ObjectId(session['user'])})
+                user['uid'] = str(user['_id'])
+                user.pop('_id')
+                session['user'] = user
             request.ctx.session = session
             request.ctx.session_need_update = False
 
@@ -83,11 +91,16 @@ async def check_fingerprint(request: Request, response: HTTPResponse):
             response.cookies["fingerprint"] = request.ctx.session.get("fingerprint")
             response.cookies["fingerprint"]["samesite"] = "None"
             response.cookies["fingerprint"]["secure"] = True
+            sess = request.ctx.session
+            if 'user' in sess.keys():
+                # 处理sess
+                sess['user'] = sess['user']['uid']
             # 创建新的会话
+            logger.info(sess)
             try:
-                await database().sessions.insert_one(request.ctx.session)
+                await database().sessions.insert_one(sess)
             except:
                 logger.error(f"无法创建新的会话 {request.ctx.session}")
-            return response
+            # return response
     except AttributeError:
         pass

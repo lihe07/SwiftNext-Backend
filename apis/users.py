@@ -2,7 +2,7 @@ from bson import ObjectId
 
 import vertex
 from apis import perm, try_until_success
-from sanic import Sanic, HTTPResponse, Request, json
+from sanic import Sanic, HTTPResponse, Request, json, response
 from config import database, client
 from sanic.log import logger
 
@@ -355,3 +355,14 @@ async def login(request: Request) -> HTTPResponse:
                 "password": password
             }
         }, 401)
+
+
+@app.get("/users/logout")
+@perm([1, 2, 3])
+async def logout(request: Request) -> HTTPResponse:
+    request.ctx.session_need_update = True
+    request.ctx.session['login'] = False
+    request.ctx.session.pop('user')
+    request.ctx.session['permission'] = 0
+    return response.empty()
+
