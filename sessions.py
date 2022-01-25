@@ -96,7 +96,7 @@ async def check_fingerprint(request: Request, response: HTTPResponse):
                 # 处理sess
                 sess['user'] = sess['user']['uid']
             # 创建新的会话
-            logger.info(sess)
+            # logger.info(sess)
             try:
                 await database().sessions.insert_one(sess)
             except:

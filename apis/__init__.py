@@ -20,6 +20,8 @@ def register_apis():
     import apis.system
     logger.info("注册用户类API /users/ => users")
     import apis.users
+    logger.info("注册存储类API /storage/ => storage")
+    import apis.storage
 
 
 # 函数装饰器 用于检查用户权限
