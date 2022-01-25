@@ -17,7 +17,9 @@ async def before_request(request: Request):
     """
     通用反CC
     """
-    if request.headers.get('origin') not in config.allowed_origins:
+    # 调试时不限制
+    # if request.headers.get('origin') not in config.allowed_origins:
+    if False:
         ip = get_ip(request)
         logger.warning(f"[{request.headers.get('origin')}] 不在Origin白名单内 IP: {ip}")
         return json({

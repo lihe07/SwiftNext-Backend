@@ -1,0 +1,51 @@
+<div class="container">
+	<h1>SwiftNext</h1>
+	<div class="content">
+		<p>To <span class="username">%username%</span>:</p>
+		<p>Your email verification code is:</p>
+		<div class="code">
+			%code%
+		</div>
+		<p>This verification code is valid for <span class="expire">%expire%</span> minutes, please complete it as soon as possible!</p>
+		<center class="tip">If you don't take any action, please ignore this message</center>
+	</div>
+</div>
+<style>
+	.container {
+		text-align: center;
+		max-width: 500px;
+		width: 100%;
+		padding:  30px;
+		padding-top: 5px;
+
+	}
+	.content {
+		width: 100%;
+		text-align: left;
+	}
+	.username {
+		font-weight: 100;
+		color: #5D5D5D;
+	}
+	.code {
+
+		border-radius: 10px;
+		width: 100%;
+		height:  70px;
+		border: #5D5D5D solid 1px;
+		text-align: center;
+		line-height: 70px;
+		font-size: 30px;
+		font-weight: 300;
+		letter-spacing: 5px;
+	}
+	.expire {
+		font-weight: 500;
+		color: #18a058;
+	}
+	.tip {
+		margin-top: 30px;
+		color: #5D5D5D;
+		font-size: 13px;
+	}
+</style>

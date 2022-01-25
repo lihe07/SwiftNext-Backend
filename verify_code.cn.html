@@ -1,0 +1,51 @@
+<div class="container">
+	<h1>SwiftNext</h1>
+	<div class="content">
+		<p>致 <span class="username">%username%</span>:</p>
+		<p>您的邮件验证码是:</p>
+		<div class="code">
+			%code%
+		</div>
+		<p>此验证码有效期为 <span class="expire">%expire%</span> 分钟，请尽快完成相应操作！</p>
+		<center class="tip">如果您没有进行任何操作，请忽略该邮件</center>
+	</div>
+</div>
+<style>
+	.container {
+		text-align: center;
+		max-width: 500px;
+		width: 100%;
+		padding:  30px;
+		padding-top: 5px;
+
+	}
+	.content {
+		width: 100%;
+		text-align: left;
+	}
+	.username {
+		font-weight: 100;
+		color: #5D5D5D;
+	}
+	.code {
+
+		border-radius: 10px;
+		width: 100%;
+		height:  70px;
+		border: #5D5D5D solid 1px;
+		text-align: center;
+		line-height: 70px;
+		font-size: 30px;
+		font-weight: 300;
+		letter-spacing: 5px;
+	}
+	.expire {
+		font-weight: 500;
+		color: #18a058;
+	}
+	.tip {
+		margin-top: 30px;
+		color: #5D5D5D;
+		font-size: 13px;
+	}
+</style>

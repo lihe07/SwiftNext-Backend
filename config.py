@@ -18,6 +18,16 @@ logout_on_ip_change = True
 session_lifetime = datetime.timedelta(seconds=3600)
 # 合法的Origins
 allowed_origins = ['http://localhost:3000', 'https://www.bwrrc.org', 'http://192.168.1.50:3000']
+# 通知用邮箱
+notify_email = 'notify@bwrrc.org.cn'
+# 邮件服务器
+smtp_server = 'smtp.exmail.qq.com'
+# 邮件服务器端口
+smtp_port = 25
+# 邮件服务器用户名
+smtp_user = notify_email
+# 邮件服务器密码
+smtp_password = 'BwR2C@2022bEijIng'
 
 
 def database():
@@ -26,3 +36,4 @@ def database():
 
 def client():
     return AsyncIOMotorClient(mongo_uri)
+
