@@ -17,6 +17,7 @@ logout_on_ip_change = True
 # session的寿命
 session_lifetime = datetime.timedelta(seconds=3600)
 # 合法的Origins
+# debug时无效
 allowed_origins = ['http://localhost:3000', 'https://www.bwrrc.org', 'http://192.168.1.50:3000']
 # 通知用邮箱
 notify_email = 'notify@bwrrc.org.cn'

@@ -1,0 +1,84 @@
+from sanic import Sanic, json, Request, HTTPResponse
+from config import database
+from apis import perm
+from bson import ObjectId
+
+app = Sanic.get_app("SwiftNext")
+
+
+@app.get("/projects")
+async def get_all_projects(_) -> HTTPResponse:
+    projects = await database().projects.find({})
+    processed = []
+    for proj in projects:
+        proj['id'] = str(proj['_id'])
+        del proj['_id']
+        processed.append(proj)
+
+    return json(processed)
+
+
+@app.post("/projects")
+@perm([3])
+async def create_project(request: Request) -> HTTPResponse:
+    if 'title' not in request.json.keys():
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "缺少title参数",
+                "en": "Missing title parameter"
+            }
+        }, 406)
+    if 'start_week' not in request.json.keys():
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "缺少start_week参数",
+                "en": "Missing start_week parameter"
+            }
+        }, 406)
+    if 'duration' not in request.json.keys():
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "缺少duration参数",
+                "en": "Missing duration parameter"
+            }
+        }, 406)
+    if 'running' not in request.json.keys():
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "缺少running参数",
+                "en": "Missing running parameter"
+            }
+        }, 406)
+    data = request.json
+    project = await database().projects.insert_one(data)
+    return json({"id": str(project.inserted_id)})
+
+
+@app.post("/projects/<project_id>/set_running")
+async def set_running(request: Request, project_id: str) -> HTTPResponse:
+    """
+    设置某个项目的运行状态
+    """
+    running = request.json.get("running")
+    if running is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "缺少running参数",
+                "en": "Missing running parameter"
+            }
+        }, 406)
+
+    if running:
+        # 将所有的任务设置为未运行
+        await database().tasks.update_many({}, {"$set": {"running": False}})
+        # 启动该项目
+        await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"running": True}})
+    else:
+        await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"running": False}})
+
+    return await get_all_projects(request)
