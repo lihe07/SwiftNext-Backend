@@ -17,8 +17,9 @@ from sanic.log import logger
 
 app = Sanic.get_app("SwiftNext")
 
-logger.warning("清空已有会话")
-database().sessions.delete_many({})
+# 调试时，先不清理会话
+# logger.warning("清空已有会话")
+# database().sessions.delete_many({})
 
 
 @app.middleware("request")

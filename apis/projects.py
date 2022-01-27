@@ -8,7 +8,7 @@ app = Sanic.get_app("SwiftNext")
 
 @app.get("/projects")
 async def get_all_projects(_) -> HTTPResponse:
-    projects = await database().projects.find({})
+    projects = await database().projects.find({}).to_list(None)
     processed = []
     for proj in projects:
         proj['id'] = str(proj['_id'])
@@ -82,3 +82,19 @@ async def set_running(request: Request, project_id: str) -> HTTPResponse:
         await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"running": False}})
 
     return await get_all_projects(request)
+
+
+@app.patch("/projects/<project_id>/")
+@perm([3])
+async def patch_project(request: Request, project_id: str) -> HTTPResponse:
+    # 允许 title, start_week, duration, running 字段
+    if 'title' in request.json.keys():
+        await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"title": request.json['title']}})
+    if 'start_week' in request.json.keys():
+        await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"start_week": request.json['start_week']}})
+    if 'duration' in request.json.keys():
+        await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"duration": request.json['duration']}})
+    if 'running' in request.json.keys():
+        await set_running(request, project_id)
+
+    return await database().projects.find_one({"_id": ObjectId(project_id)})

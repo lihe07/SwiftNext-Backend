@@ -22,6 +22,12 @@ def register_apis():
     import apis.users
     logger.info("注册存储类API /storage/ => storage")
     import apis.storage
+    logger.info("注册填报类API /records/ => records")
+    import apis.records
+    logger.info("注册项目类API /projects/ => projects")
+    import apis.projects
+    logger.info("注册通知类API /notifications/ => notifications")
+    import apis.notifications
 
 
 # 函数装饰器 用于检查用户权限
@@ -30,10 +36,10 @@ def perm(level):
         level = [level]
 
     def wrapper(func):
-        async def _(request):
+        async def _(request, *args, **kwargs):
             # 检验权限
             if request.ctx.session['permission'] in level:
-                return await func(request)
+                return await func(request, *args, **kwargs)
             else:
                 return json({
                     "code": 1,

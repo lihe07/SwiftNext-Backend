@@ -1,3 +1,6 @@
+import datetime
+import uuid
+
 from bson import ObjectId
 
 import vertex
@@ -365,4 +368,210 @@ async def logout(request: Request) -> HTTPResponse:
     request.ctx.session.pop('user')
     request.ctx.session['permission'] = 0
     return response.empty()
+
+
+@app.post("/users/register_invitations")
+@perm([1, 2, 3])
+async def new_register_invitation(request: Request) -> HTTPResponse:
+    """
+    创建新的注册邀请
+    可选字段: group_id
+    必备字段: expire_at
+    :param request:
+    :return:
+    """
+    try:
+        expire_at = datetime.datetime.utcfromtimestamp(int(request.json.get("expire_at")))
+    except ValueError:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "时间格式不正确",
+                "en": "The time format is incorrect"
+            },
+            "description": {
+                "expire_at": request.json.get("expire_at")
+            }
+        }, 406)
+    # 检查expire_at是否合法 最大为30天
+    if expire_at > datetime.datetime.utcnow() + datetime.timedelta(days=30):
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "过期时间超出范围",
+                "en": "The expire time is out of range"
+            },
+            "description": {
+                "expire_at": request.json.get("expire_at")
+            }
+        }, 406)
+    permission = request.ctx.session['permission']
+    # 小组长和管理员可以自定义新用户的权限
+    if permission == 2 or permission == 3:
+        try:
+            permission = int(request.json.get("permission"))
+        except ValueError:
+            return json({
+                "code": 4,
+                "message": {
+                    "cn": "请指定新用户的权限",
+                    "en": "Please specify the new user's permission"
+                },
+                "description": {
+                    "permission": request.json.get("permission")
+                }
+            }, 406)
+        if permission > request.ctx.session['permission']:
+            # 越权操作
+            return json({
+                "code": 4,
+                "message": {
+                    "cn": "不能指定比自己更高的权限",
+                    "en": "Cannot assign a higher permission than the current user"
+                },
+                "description": {
+                    "permission": request.json.get("permission"),
+                    "current_permission": request.ctx.session['permission']
+                }
+            }, 403)
+    # 为了防止撞库，邀请ID必须随机生成
+    invite_id = str(uuid.uuid4())
+
+    # 检查group_id是否合法
+    if request.json.get("group_id") is not None:
+        if await database().groups.find_one({"_id": ObjectId(request.json.get("group_id"))}) is None:
+            return json({
+                "code": 4,
+                "message": {
+                    "cn": "调查小组不存在",
+                    "en": "The group does not exist",
+                },
+                "description": {
+                    "group_id": request.json.get("group_id")
+                }
+            }, 406)
+        # 创建新的注册邀请
+        result = database().invitations.insert_one({
+            "_id": ObjectId(invite_id),
+            "expire_at": expire_at,
+            "group_id": request.json.get("group_id"),
+            "type": "register",
+            "permission": permission
+        })
+        return json({
+            "id": str(result.inserted_id),
+        })
+
+    else:
+        # 创建新的注册邀请
+        result = database().invitations.insert_one({
+            "_id": ObjectId(invite_id),
+            "expire_at": expire_at,
+            "type": "register",
+            "permission": permission
+        })
+        return json({
+            "id": str(result.inserted_id),
+        })
+
+
+@app.get("/users/register_invitations/<invitation_id>")
+async def get_register_invitation(request: Request, invitation_id: str) -> HTTPResponse:
+    """
+    从数据库查询某个注册邀请
+    :param request:
+    :param invitation_id:
+    :return:
+    """
+    result = await database().invitations.find_one({"_id": ObjectId(invitation_id), "type": "register"})
+    if result is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "邀请不存在",
+                "en": "The invitation does not exist"
+            },
+            "description": {
+                "invitation_id": invitation_id
+            }
+        }, 404)
+    return json({
+        "id": str(result["_id"]),
+        "expire_at": result["expire_at"],
+        "group_id": str(result["group_id"]) if result["group_id"] is not None else None,
+        "permission": result["permission"]
+    })
+
+
+@app.patch("/users/<uid>")
+@perm([1, 2, 3])
+async def edit_user(request: Request, uid: str) -> HTTPResponse:
+    # 非管理员不能修改用户权限
+    if request.ctx.session['permission'] != 3 and request.json.get("permission") is not None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "非管理员不能修改用户权限",
+                "en": "Non-administrators cannot modify user permissions"
+            },
+            "description": {
+                "permission": request.json.get("permission")
+            }
+        }, 403)
+    # 非管理员不能修改其他用户
+    if request.ctx.session['permission'] != 3 and uid != request.ctx.session['uid']:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "非管理员不能修改其他用户",
+                "en": "Non-administrators cannot modify other users"
+            },
+            "description": {
+                "uid": uid
+            }
+        }, 403)
+    # 检查用户是否存在
+    user = await database().users.find_one({"_id": ObjectId(uid)})
+    if user is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "用户不存在",
+                "en": "The user does not exist"
+            },
+            "description": {
+                "uid": uid
+            }
+        }, 404)
+    # 对于非管理员用户：校验有无非法字段
+    if request.ctx.session['permission'] != 3:
+        allowed_fields = ["name", "email", "permission", "avatar"]
+        for field in request.json:
+            if field not in allowed_fields:
+                return json({
+                    "code": 4,
+                    "message": {
+                        "cn": "非法字段",
+                        "en": "Illegal field"
+                    },
+                    "description": {
+                        "field": field,
+                        "allowed_fields": allowed_fields
+                    }
+                }, 403)
+    # 更新用户信息
+    result = await database().users.update_one({"_id": ObjectId(uid)}, {"$set": request.json})
+    if result.modified_count == 0:
+        return json({
+            "code": 3,
+            "message": {
+                "cn": "更新失败",
+                "en": "Update failed"
+            },
+        }, 500)
+    # 返回用户信息
+    user = await database().users.find_one({"_id": ObjectId(uid)})
+    user['uid'] = str(user['_id'])
+    del user['_id']
+    return json(user)
 
