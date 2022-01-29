@@ -1,13 +1,26 @@
 """
 From NanoDet2
 """
+import asyncio
+import threading
+from asyncio import as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 import onnxruntime as rt
 import numpy as np
 import cv2
-from sanic import Sanic, Request, HTTPResponse
+import socketio
+from bson import ObjectId
+from sanic import Sanic, Request, HTTPResponse, json, response
+from sanic.log import logger
 
 from operators import max_pooling, heatmap_top_k, median_blur
+
+import config
+from apis import perm, storage
+from config import database
+
+heatmap_top_k(np.random.rand(10, 10), 10)
 
 
 def tile_edge(size, window_size):
@@ -58,12 +71,13 @@ class Pipeline:
         hm = cv2.resize(hm, None, fx=metadata['width_scale'] * 4, fy=metadata['height_scale'] * 4)
         return hm, metadata
 
-    def predict(self, img):
+    async def predict(self, img, task_id):
         """
         对单张图片执行预测
         """
+        logger.info("Pipeline开始执行!")
+        await sio.emit('pipeline_started', {'task_id': task_id})
         tiles, metadata = self.pre_process(img)
-
         full_hm = np.zeros((img.shape[0], img.shape[1]))
 
         # with concurrent.futures.ThreadPoolExecutor(max_workers=self.workers) as executor:
@@ -79,14 +93,27 @@ class Pipeline:
         #         assert metadata['end_x'] <= img.shape[1] and metadata['end_y'] <= img.shape[0]
         #         full_hm[metadata['start_y']: metadata['end_y'], metadata['start_x']: metadata['end_x']] += hm
         #
+        i = 1
         for batch, metadata in zip(tiles, metadata):
+            logger.info("进度: {}/{}".format(i, len(tiles)))
+            await sio.emit('pipeline_progress', {'task_id': task_id, 'progress': i, 'total': len(tiles)})
             hm, metadata = self.predict_worker(batch, metadata)
             full_hm[metadata['start_y']: metadata['end_y'], metadata['start_x']: metadata['end_x']] += hm
+            i += 1
 
         full_hm[full_hm > 1] = 1
 
         scores, points = heatmap_top_k(full_hm, self.num)
-        return scores, points
+        result = []
+        for score, point in zip(scores, points):
+            result.append({
+                "score": float(score),
+                "x": int(point[1]),
+                "y": int(point[0])
+            })
+        logger.info("Pipeline执行完毕!")
+
+        return result
 
     def pre_process(self, img):
         """
@@ -170,3 +197,95 @@ class Pipeline:
 
 
 app = Sanic.get_app("SwiftNext")
+sio = app.ctx.sio
+
+pipeline = Pipeline(config.model_path)
+
+
+@app.signal("swiftnext.detector.new_image")
+async def do_detect(**context):
+    result = await pipeline.predict(cv2.imread(context['image_path']), context['task_id'])
+    await database().detections.find_one_and_update({"_id": ObjectId(context['task_id'])},
+                                              {"$set": {"result": result, "finished": True}})
+    await sio.emit("pipeline_finished", {"task_id": context['task_id']})
+
+
+@app.post("/detector/task")
+@perm([1, 2, 3])
+async def new_task(request: Request) -> HTTPResponse:
+    """
+    新建检测任务
+    :param request:
+    :return:
+    """
+
+    db = database()
+    attachment = await db.storage.find_one({"_id": ObjectId(request.json.get("attachment_id"))})
+    if attachment is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "附件不存在",
+                "en": "Attachment not found"
+            }
+        }, 404)
+    if "image" not in attachment['mime_type']:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "附件不是图片",
+                "en": "Attachment is not an image"
+            }
+        }, 400)
+
+    image_path = attachment["local_path"]
+
+    result = await db.detections.insert_one({"finished": False, "attachment": request.json.get("attachment_id")})
+    task_id = str(result.inserted_id)
+
+    # 开始检测
+    app.add_task(
+        app.dispatch("swiftnext.detector.new_image", context={'image_path': image_path, 'task_id': task_id})
+    )
+    # 这里不awaiting，因为这个任务是异步的
+
+    return json({
+        "id": task_id,
+    }, 201)
+
+
+@app.get("/detector/<task_id>")
+@perm([1, 2, 3])
+async def get_task_info(request: Request, task_id: str) -> HTTPResponse:
+    result = await database().detections.find_one({"_id": ObjectId(task_id)})
+    if result is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "任务不存在",
+                "en": "Task not found"
+            }
+        }, 404)
+    return json(result)
+
+
+@app.delete("/detector/<task_id>")
+@perm([1, 2, 3])
+async def delete_task(request: Request, task_id: str) -> HTTPResponse:
+    task = await database().detections.find_one({"_id": ObjectId(task_id)})
+    if task is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "任务不存在",
+                "en": "Task not found"
+            }
+        }, 404)
+
+    attachment = await database().storage.find_one({"_id": ObjectId(task["attachment"])})
+
+    if attachment is not None:
+        storage.delete_attachments([attachment])
+
+    result = await database().detections.delete_one({"_id": ObjectId(task_id)})
+    return response.empty()

@@ -28,6 +28,10 @@ def register_apis():
     import apis.projects
     logger.info("注册通知类API /notifications/ => notifications")
     import apis.notifications
+    logger.info("注册小组类API /groups/ => groups")
+    import apis.groups
+    logger.info("注册检测类API /detector/ => detector")
+    import apis.detector
 
 
 # 函数装饰器 用于检查用户权限
@@ -38,6 +42,7 @@ def perm(level):
     def wrapper(func):
         async def _(request, *args, **kwargs):
             # 检验权限
+            logger.info(request.ctx.session)
             if request.ctx.session['permission'] in level:
                 return await func(request, *args, **kwargs)
             else:

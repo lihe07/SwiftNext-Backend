@@ -38,7 +38,7 @@ async def get_user_record(request: Request, uid: str) -> HTTPResponse:
 async def new_record(request: Request) -> HTTPResponse:
     """
     新建填报
-    必备字段：group_id, num, time, project
+    必备字段：group_id, num, time, project, position
     可选字段：collaborators, specific_location, origination, related_detections, attachments
     """
     record = request.json
@@ -95,6 +95,21 @@ async def new_record(request: Request) -> HTTPResponse:
         record["related_detections"] = [ObjectId(d) for d in record["related_detections"]]
     if "attachments" in record:
         record["attachments"] = [ObjectId(a) for a in record["attachments"]]
+
+    # 检查该调查点是否属于该调查小组
+    position = await database().positions.find_one({"_id": ObjectId(record["position"]), "belongs_to": ObjectId(record["group_id"])})
+    if position is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "该调查点不存在或不属于该调查小组",
+                "en": "Invalid position"
+            },
+            "description": {
+                "position": record["position"],
+                "group_id": record["group_id"],
+            }
+        })
     await database().records.insert_one(record)
     return json(record)
 

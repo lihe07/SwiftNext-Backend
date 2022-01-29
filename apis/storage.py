@@ -1,9 +1,12 @@
 """
 文件相关API
 """
+import datetime
 import os.path
 import uuid
 
+import bson.errors
+from bson import ObjectId
 from sanic import Sanic, Request, HTTPResponse, response, json
 from sanic.log import logger
 from sanic.response import ResponseStream
@@ -15,7 +18,8 @@ import mimetypes
 app = Sanic.get_app("SwiftNext")
 
 
-@app.post("/storage/")
+@app.post("/storage")
+@perm([1, 2, 3])
 async def upload(request: Request) -> HTTPResponse:
     """
     上传新的附件
@@ -34,7 +38,7 @@ async def upload(request: Request) -> HTTPResponse:
                 },
             }, 400)
         # 保存本地
-        _, ext = file.name.split(".")
+        ext = file.name.split('.')[-1] if len(file.name.split(".")) > 0 else None
         name = str(uuid.uuid4()) + "." + ext
         path = os.path.join(config.storage_dir, name)
 
@@ -45,6 +49,8 @@ async def upload(request: Request) -> HTTPResponse:
             "name": file.name,
             "local_path": path,
             "mime_type": mimetype,
+            "created_at": datetime.datetime.utcnow(),
+            "owner": request.ctx.session['user']['uid']
         })
 
         # todo: 文件名生成
@@ -126,3 +132,68 @@ async def get_download(request: Request, fid: str):
         "Content-Type": result["mime_type"],
         "Cache-Control": "max-age=86400",  # 控制缓存 1天
     })
+
+
+def delete_attachments(attachments: list):
+    """
+    删除附件
+    :param attachments:
+    :return:
+    """
+    for attachment in attachments:
+        try:
+            os.remove(attachment["local_path"])
+        except FileNotFoundError:
+            logger.warning("文件不存在: {}".format(attachment["local_path"]))
+        config.database().storage.delete_one({"_id": attachment["_id"]})
+
+
+@app.delete("/storage/<fid>")
+@perm([1, 2, 3])
+async def delete_attachment(request: Request, fid: str):
+    """
+    删除附件
+    非管理员只能删除自己的
+    :param request:
+    :param fid:
+    :return:
+    """
+    try:
+        attachment = await config.database().storage.find_one({"_id": ObjectId(fid)})
+    except bson.errors.InvalidId:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "指定的文件不存在",
+                "en": "The specified file does not exist"
+            },
+            "description": {
+                "file_id": fid
+            }
+        }, 404)
+    if attachment is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "指定的文件不存在",
+                "en": "The specified file does not exist"
+            },
+            "description": {
+                "file_id": fid
+            }
+        }, 404)
+    if attachment["owner"] != request.ctx.session['user']['uid']:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "您没有权限删除该文件",
+                "en": "You do not have permission to delete this file"
+            },
+            "description": {
+                "file_id": fid,
+                "owner": attachment["owner"]
+            }
+        }, 403)
+
+    delete_attachments([attachment])
+    return response.empty(204)

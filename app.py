@@ -9,9 +9,6 @@ app = Sanic("SwiftNext")
 logger.info("创建SocketIO实例")
 __import__("sio")
 
-logger.info("注册API")
-apis.register_apis()
-
 logger.info("注册错误处理器")
 __import__("errors")
 
@@ -20,6 +17,9 @@ __import__("sessions")
 
 logger.info("启动VerTeX保护器")
 __import__("vertex")
+
+logger.info("注册API")
+apis.register_apis()
 
 if __name__ == '__main__':
     logger.info(f"服务运行在 {config.host}:{config.port}")

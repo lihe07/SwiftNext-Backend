@@ -30,6 +30,8 @@ smtp_user = notify_email
 # 邮件服务器密码
 smtp_password = 'BwR2C@2022bEijIng'
 
+model_path = "./model.best.onnx"
+
 
 def database():
     return AsyncIOMotorClient(mongo_uri).swiftnext
@@ -37,4 +39,3 @@ def database():
 
 def client():
     return AsyncIOMotorClient(mongo_uri)
-

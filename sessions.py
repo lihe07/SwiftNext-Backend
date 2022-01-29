@@ -17,6 +17,7 @@ from sanic.log import logger
 
 app = Sanic.get_app("SwiftNext")
 
+
 # 调试时，先不清理会话
 # logger.warning("清空已有会话")
 # database().sessions.delete_many({})
@@ -92,6 +93,7 @@ async def check_fingerprint(request: Request, response: HTTPResponse):
             response.cookies["fingerprint"] = request.ctx.session.get("fingerprint")
             response.cookies["fingerprint"]["samesite"] = "None"
             response.cookies["fingerprint"]["secure"] = True
+            # response.cookies["fingerprint"]["domain"] = "localhost:3000"
             sess = request.ctx.session
             if 'user' in sess.keys():
                 # 处理sess

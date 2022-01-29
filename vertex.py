@@ -42,7 +42,7 @@ async def before_request(request: Request):
 async def cors(request, response):
     response.headers['Access-Control-Allow-Origin'] = request.headers.get('origin')
     response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Allow-Methods'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
     response.headers[
         'Access-Control-Allow-Headers'] = 'origin, content-type, accept, authorization, x-xsrf-token, x-request-id'
 
