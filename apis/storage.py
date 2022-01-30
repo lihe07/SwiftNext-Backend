@@ -80,7 +80,19 @@ async def get_inline(request: Request, fid: str):
                 "en": "Please specify a file ID"
             }
         }, 400)
-    result = config.database().storage.find_one({"_id": fid})
+    try:
+        result = await config.database().storage.find_one({"_id": ObjectId(fid)})
+    except bson.errors.InvalidId:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "指定的文件不存在",
+                "en": "The specified file does not exist"
+            },
+            "description": {
+                "file_id": fid
+            }
+        }, 404)
     if result is None:
         return json({
             "code": 4,
@@ -115,7 +127,19 @@ async def get_download(request: Request, fid: str):
                 "en": "Please specify a file ID"
             }
         }, 400)
-    result = config.database().storage.find_one({"_id": fid})
+    try:
+        result = await config.database().storage.find_one({"_id": ObjectId(fid)})
+    except bson.errors.InvalidId:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "指定的文件不存在",
+                "en": "The specified file does not exist"
+            },
+            "description": {
+                "file_id": fid
+            }
+        }, 404)
     if result is None:
         return json({
             "code": 4,

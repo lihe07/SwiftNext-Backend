@@ -97,10 +97,10 @@ async def get_groups_positions(request: Request, group_id: str) -> HTTPResponse:
             "en": "Group not found"
         }
     }, 404)
-    try:
-        result = await database().positions.find({"belongs_to": ObjectId(group_id)}).to_list(None)
-    except bson.errors.InvalidId:
-        return no_such_position
+    result = await database().positions.find({"belongs_to": group_id}).to_list(None)
     if result is None:
         return no_such_position
+    for point in result:
+        point['id'] = str(point['_id'])
+        del point['_id']
     return json(result)
