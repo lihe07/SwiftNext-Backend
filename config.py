@@ -8,7 +8,7 @@ mongo_uri = 'mongodb://192.168.1.42:27017/'
 # 存储用户上传内容
 storage_dir = './storage'
 # 服务器监听地址
-host = '0.0.0.0'
+host = '::'
 port = 8000
 # 子进程
 workers = 6

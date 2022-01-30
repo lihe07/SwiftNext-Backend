@@ -28,6 +28,7 @@ apis.register_apis()
 
 sio.attach(app)
 
+
 if __name__ == '__main__':
     logger.info(f"服务运行在 {config.host}:{config.port}")
-    app.run(host=config.host, port=config.port, workers=config.workers, auto_reload=True)
+    app.run(host=config.host, port=config.port, workers=config.workers, auto_reload=True, ssl="./ssl")

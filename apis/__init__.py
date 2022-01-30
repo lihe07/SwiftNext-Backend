@@ -76,4 +76,7 @@ async def try_until_success(func, *args, **kwargs):
 
 
 def get_ip(request):
-    return request.headers.get("x-forwarded-for")
+    if request.headers.get("x-forwarded-for"):
+        return request.headers.get("x-forwarded-for")
+    else:
+        return request.ip

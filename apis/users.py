@@ -503,6 +503,7 @@ async def get_register_invitation(request: Request, invitation_id: str) -> HTTPR
         "permission": result["permission"]
     })
 
+
 @app.get("/users/<uid>")
 @perm([1, 2, 3])
 async def fetch_user(request: Request, uid: str) -> HTTPResponse:
@@ -525,7 +526,6 @@ async def fetch_user(request: Request, uid: str) -> HTTPResponse:
     user['uid'] = str(user['_id'])
     del user['_id']
     return json(user)
-
 
 
 @app.patch("/users/<uid>")
@@ -600,3 +600,14 @@ async def edit_user(request: Request, uid: str) -> HTTPResponse:
     del user['_id']
     return json(user)
 
+
+@app.get("/users")
+@perm([1, 2, 3])
+async def get_all_users(request: Request) -> HTTPResponse:
+    users = await database().users.find({}, {'password': 0}).to_list(length=None)
+    result = []
+    for user in users:
+        user['uid'] = str(user['_id'])
+        del user['_id']
+        result.append(user)
+    return json(result)
