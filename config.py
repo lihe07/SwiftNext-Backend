@@ -13,7 +13,7 @@ port = 8000
 # 子进程
 workers = 6
 # 在切换IP时退出登陆
-logout_on_ip_change = True
+logout_on_ip_change = False
 # session的寿命
 session_lifetime = datetime.timedelta(seconds=3600)
 # 合法的Origins

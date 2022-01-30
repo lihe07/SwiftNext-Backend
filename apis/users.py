@@ -2,6 +2,7 @@ import datetime
 import uuid
 
 from bson import ObjectId
+from bson.errors import InvalidId
 
 import vertex
 from apis import perm, try_until_success
@@ -501,6 +502,30 @@ async def get_register_invitation(request: Request, invitation_id: str) -> HTTPR
         "group_id": str(result["group_id"]) if result["group_id"] is not None else None,
         "permission": result["permission"]
     })
+
+@app.get("/users/<uid>")
+@perm([1, 2, 3])
+async def fetch_user(request: Request, uid: str) -> HTTPResponse:
+    no_such_user = json({
+        "code": 4,
+        "message": {
+            "cn": "用户不存在",
+            "en": "The user does not exist"
+        },
+        "description": {
+            "uid": uid
+        }
+    }, 404)
+    try:
+        user = await database().users.find_one({"_id": ObjectId(uid)}, {'password': 0})
+    except InvalidId:
+        return no_such_user
+    if user is None:
+        return no_such_user
+    user['uid'] = str(user['_id'])
+    del user['_id']
+    return json(user)
+
 
 
 @app.patch("/users/<uid>")

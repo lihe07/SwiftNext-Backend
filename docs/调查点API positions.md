@@ -32,3 +32,9 @@
 }
 ```
 
+## GET /positions/by_group/<group_id>
+
+> 查询这个小组的全部调查点
+>
+> - 权限：1，2，3
+

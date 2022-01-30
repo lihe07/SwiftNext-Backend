@@ -32,6 +32,8 @@ def register_apis():
     import apis.groups
     logger.info("注册检测类API /detector/ => detector")
     import apis.detector
+    logger.info("注册调查点类API /positions/ => positions")
+    import apis.positions
 
 
 # 函数装饰器 用于检查用户权限
@@ -74,4 +76,4 @@ async def try_until_success(func, *args, **kwargs):
 
 
 def get_ip(request):
-    return request.headers.get("ali-cdn-real-ip")
+    return request.headers.get("x-forwarded-for")

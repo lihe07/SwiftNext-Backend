@@ -1,6 +1,6 @@
 import datetime
 
-from sanic import Sanic, json, Request, HTTPResponse
+from sanic import Sanic, json, Request, HTTPResponse, response
 from config import database
 from bson import ObjectId
 from apis import perm
@@ -97,7 +97,8 @@ async def new_record(request: Request) -> HTTPResponse:
         record["attachments"] = [ObjectId(a) for a in record["attachments"]]
 
     # 检查该调查点是否属于该调查小组
-    position = await database().positions.find_one({"_id": ObjectId(record["position"]), "belongs_to": ObjectId(record["group_id"])})
+    position = await database().positions.find_one(
+        {"_id": ObjectId(record["position"]), "belongs_to": ObjectId(record["group_id"])})
     if position is None:
         return json({
             "code": 4,
@@ -145,3 +146,65 @@ async def get_records(request: Request) -> HTTPResponse:
     # 执行查询
     records = await database().records.find(query).to_list(nums)
     return json(records)
+
+
+# 一些跟草稿有关的接口
+@app.get("/drafts")
+@perm([1, 2, 3])
+async def get_users_drafts(request: Request) -> HTTPResponse:
+    """
+    获取某个用户的全部草稿
+    :param request:
+    :return:
+    """
+    uid = request.ctx.session['user']['uid']
+    drafts = await database().drafts.find({"uid": uid}).to_list(None)
+    if drafts is None:
+        return json([], 404)
+    return json(drafts)
+
+
+@app.get("/drafts/record")
+@perm([1, 2, 3])
+async def get_record_draft(request: Request) -> HTTPResponse:
+    """
+    获取某个用户的记录类草稿
+    :param request:
+    :return:
+    """
+    uid = request.ctx.session['user']['uid']
+    draft = await database().drafts.find_one({"uid": uid, "type": "record"})
+    if draft is None:
+        return response.empty(404)
+    return json(draft)
+
+
+@app.patch("/drafts/record")
+@perm([1, 2, 3])
+async def write_record_draft(request: Request) -> HTTPResponse:
+    fields = request.json
+    uid = request.ctx.session['user']['uid']
+    draft = await database().drafts.find_one({"uid": uid, "type": "record"})
+    if draft is None:
+        draft = {
+            "uid": uid,
+            "type": "record",
+            **fields
+        }
+        await database().drafts.insert_one(draft)
+    else:
+        await database().drafts.update_one({"uid": uid, "type": "record"}, {"$set": fields})
+    return response.empty(204)
+
+
+@app.delete("/drafts/record")
+@perm([1, 2, 3])
+async def delete_record_draft(request: Request) -> HTTPResponse:
+    """
+    删除某个用户的全部填报类草稿
+    :param request:
+    :return:
+    """
+    uid = request.ctx.session['user']['uid']
+    await database().drafts.delete_many({"uid": uid, "type": "record"})
+    return response.empty(204)

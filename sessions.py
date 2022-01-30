@@ -11,7 +11,7 @@ from sanic import Sanic, Request, HTTPResponse, json
 import uuid
 
 import config
-from apis import try_until_success
+from apis import try_until_success, get_ip
 from config import database
 from sanic.log import logger
 
@@ -25,7 +25,7 @@ app = Sanic.get_app("SwiftNext")
 
 @app.middleware("request")
 async def session_manager(request: Request):
-    ip = request.headers.get("ali-cdn-real-ip")
+    ip = get_ip(request)
     client_fingerprint = request.cookies.get("fingerprint")
     dummy_session = {
         "fingerprint": str(uuid.uuid4()),
@@ -52,13 +52,13 @@ async def session_manager(request: Request):
         else:
             if session['ip'] != ip:
                 if config.logout_on_ip_change:
-                    logger.info(f"客户端的IP发生了变化，删除会话 {session.ip} => {ip}")
+                    logger.info(f"客户端的IP发生了变化，删除会话 {session['ip']} => {ip}")
                     await database().sessions.delete_one({"fingerprint": client_fingerprint})
                     request.ctx.session = dummy_session
                     request.ctx.session_need_update = True
                     return
                 else:
-                    logger.info(f"客户端的IP发生了变化，更新会话 {session.ip} => {ip}")
+                    logger.info(f"客户端的IP发生了变化，更新会话 {session['ip']} => {ip}")
                     session['ip'] = ip
                     await database().sessions.update_one({"fingerprint": client_fingerprint}, {"$set": {"ip": ip}})
             # 为这个session续命
