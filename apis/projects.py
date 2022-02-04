@@ -1,4 +1,4 @@
-from sanic import Sanic, json, Request, HTTPResponse
+from sanic import Sanic, json, Request, HTTPResponse, response
 from config import database
 from apis import perm
 from bson import ObjectId
@@ -29,11 +29,11 @@ async def create_project(request: Request) -> HTTPResponse:
                 "en": "Missing title parameter"
             }
         }, 406)
-    if 'start_week' not in request.json.keys():
+    if 'start_time' not in request.json.keys():
         return json({
             "code": 4,
             "message": {
-                "cn": "缺少start_week参数",
+                "cn": "缺少start_time参数",
                 "en": "Missing start_week parameter"
             }
         }, 406)
@@ -75,13 +75,36 @@ async def set_running(request: Request, project_id: str) -> HTTPResponse:
 
     if running:
         # 将所有的任务设置为未运行
-        await database().tasks.update_many({}, {"$set": {"running": False}})
+        await database().projects.update_many({}, {"$set": {"running": False}})
         # 启动该项目
         await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"running": True}})
     else:
         await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"running": False}})
 
     return await get_all_projects(request)
+
+
+@app.get("/projects/<project_id>")
+@perm([1, 2, 3])
+async def get_project(request: Request, project_id: str) -> HTTPResponse:
+    """
+    尝试查询一个项目
+    :param request:
+    :param project_id:
+    :return:
+    """
+    project = await database().projects.find_one({"_id": ObjectId(project_id)})
+    if project is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "项目不存在",
+                "en": "Project not found"
+            }
+        }, 404)
+    project['id'] = str(project['_id'])
+    del project['_id']
+    return json(project)
 
 
 @app.patch("/projects/<project_id>/")
@@ -91,10 +114,24 @@ async def patch_project(request: Request, project_id: str) -> HTTPResponse:
     if 'title' in request.json.keys():
         await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"title": request.json['title']}})
     if 'start_week' in request.json.keys():
-        await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"start_week": request.json['start_week']}})
+        await database().projects.update_one({"_id": ObjectId(project_id)},
+                                             {"$set": {"start_week": request.json['start_week']}})
     if 'duration' in request.json.keys():
-        await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"duration": request.json['duration']}})
+        await database().projects.update_one({"_id": ObjectId(project_id)},
+                                             {"$set": {"duration": request.json['duration']}})
     if 'running' in request.json.keys():
         await set_running(request, project_id)
 
-    return await database().projects.find_one({"_id": ObjectId(project_id)})
+    return response.empty()
+
+@app.delete("/projects/<project_id>")
+@perm([3])
+async def delete_project(request: Request, project_id: str) -> HTTPResponse:
+    """
+    删除一个项目
+    :param request:
+    :param project_id:
+    :return:
+    """
+    await database().projects.delete_one({"_id": ObjectId(project_id)})
+    return response.empty()
