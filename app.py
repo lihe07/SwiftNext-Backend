@@ -3,15 +3,20 @@ from sanic import Sanic, Request
 import config
 from sanic.log import logger
 import apis
+from sanic_cors import CORS
 
 logger.info("创建APP实例")
 app = Sanic("SwiftNext")
+app.config['CORS_AUTOMATIC_OPTIONS'] = True
 app.config['CORS_SUPPORTS_CREDENTIALS'] = True
+app.config['REQUEST_MAX_SIZE'] = 200 * 1024 * 1024
+CORS(app)
 
 logger.info("创建SocketIO实例")
 sio = socketio.AsyncServer(async_mode='sanic', cors_allowed_origins=[], cors_credentials=True)
 
 app.ctx.sio = sio
+sio.attach(app)
 
 
 logger.info("注册错误处理器")
@@ -26,7 +31,6 @@ __import__("vertex")
 logger.info("注册API")
 apis.register_apis()
 
-sio.attach(app)
 
 
 if __name__ == '__main__':

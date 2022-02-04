@@ -2,9 +2,11 @@
 文件相关API
 """
 import datetime
+import hashlib
 import os.path
 import uuid
 
+import aiofiles
 import bson.errors
 from bson import ObjectId
 from sanic import Sanic, Request, HTTPResponse, response, json
@@ -18,13 +20,13 @@ import mimetypes
 app = Sanic.get_app("SwiftNext")
 
 
-@app.post("/storage")
+@app.post("/storage", stream=False)
 @perm([1, 2, 3])
 async def upload(request: Request) -> HTTPResponse:
     """
     上传新的附件
     """
-    # logger.info(request.files)
+
     if request.files.get("file") is not None:
         file = request.files.get("file")
         logger.info(file.type)
@@ -42,15 +44,22 @@ async def upload(request: Request) -> HTTPResponse:
         name = str(uuid.uuid4()) + "." + ext
         path = os.path.join(config.storage_dir, name)
 
-        with open(path, "wb") as f:
-            f.write(file.body)
+        async with aiofiles.open(path, "wb") as f:
+            await f.write(file.body)
+            # while True:
+            #     chunk = await request.stream.read()
+            #     if not chunk:
+            #         break
+            #     await f.write(chunk)
+        md5 = hashlib.md5(file.body).hexdigest()
 
         result = await config.database().storage.insert_one({
-            "name": file.name,
+            "filename": file.name,
             "local_path": path,
             "mime_type": mimetype,
             "created_at": datetime.datetime.utcnow(),
-            "owner": request.ctx.session['user']['uid']
+            "owner": request.ctx.session['user']['uid'],
+            "md5": md5
         })
 
         # todo: 文件名生成
@@ -65,6 +74,44 @@ async def upload(request: Request) -> HTTPResponse:
                 "en": "Please upload a file"
             }
         }, 400)
+
+
+async def check_md5(md5):
+    if md5 is None:
+        return False
+
+    result = await config.database().storage.find_one({"md5": md5})
+    if result is None:
+        return False
+    return result
+
+
+@app.post("/storage/link")
+@perm([1, 2, 3])
+async def link(request: Request) -> HTTPResponse:
+    # 为某个已经存在的文件生成一个新的数据库链接
+    result = await check_md5(request.json.get("md5"))
+    if result is False:
+        return json({
+            "code": 1001,
+            "message": {
+                "cn": "文件不存在",
+                "en": "File not found"
+            }
+        }, 400)
+    filename = request.json.get("name") if request.json.get("name") is not None else result["name"]
+    inserted = await config.database().storage.insert_one({
+        "md5": request.json.get("md5"),
+        "owner": request.ctx.session['user']['uid'],
+        "created_at": datetime.datetime.utcnow(),
+        "local_path": result["local_path"],
+        "mime_type": result["mime_type"],
+        "filename": filename
+    })
+    return json({
+        "id": str(inserted.inserted_id),
+        "name": filename
+    })
 
 
 @app.get("/storage/inline/<fid>")
@@ -105,7 +152,7 @@ async def get_inline(request: Request, fid: str):
             }
         }, 404)
     return await response.file_stream(result["local_path"], mime_type=result["mime_type"], chunk_size=1024, headers={
-        "Content-Disposition": "inline; filename=\"{}\"".format(result["name"]),
+        "Content-Disposition": "inline; filename=\"{}\"".format(result["filename"]),
         "Content-Type": result["mime_type"],
         "Cache-Control": "max-age=86400",  # 控制缓存 1天
     })
@@ -152,7 +199,7 @@ async def get_download(request: Request, fid: str):
             }
         }, 404)
     return await response.file_stream(result["local_path"], mime_type=result["mime_type"], chunk_size=1024, headers={
-        "Content-Disposition": "attachment; filename=\"{}\"".format(result["name"]),
+        "Content-Disposition": "attachment; filename=\"{}\"".format(result["filename"]),
         "Content-Type": result["mime_type"],
         "Cache-Control": "max-age=86400",  # 控制缓存 1天
     })
@@ -165,10 +212,14 @@ def delete_attachments(attachments: list):
     :return:
     """
     for attachment in attachments:
-        try:
-            os.remove(attachment["local_path"])
-        except FileNotFoundError:
-            logger.warning("文件不存在: {}".format(attachment["local_path"]))
+        # 如果这个文件在数据库只存在一次，那么就删除它
+        md5 = attachment["md5"]
+        count = config.database().storage.count_documents({"md5": md5})
+        if count == 1:
+            try:
+                os.remove(attachment["local_path"])
+            except FileNotFoundError:
+                logger.warning("文件不存在: {}".format(attachment["local_path"]))
         config.database().storage.delete_one({"_id": attachment["_id"]})
 
 

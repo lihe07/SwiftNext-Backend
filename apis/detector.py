@@ -5,7 +5,9 @@ import asyncio
 import threading
 from asyncio import as_completed
 from concurrent.futures import ThreadPoolExecutor
+from json import dumps, loads
 
+import bson.errors
 import onnxruntime as rt
 import numpy as np
 import cv2
@@ -15,6 +17,7 @@ from sanic import Sanic, Request, HTTPResponse, json, response
 from sanic.log import logger
 
 from operators import max_pooling, heatmap_top_k, median_blur
+from websocket import WebSocket
 
 import config
 from apis import perm, storage
@@ -71,12 +74,16 @@ class Pipeline:
         hm = cv2.resize(hm, None, fx=metadata['width_scale'] * 4, fy=metadata['height_scale'] * 4)
         return hm, metadata
 
-    async def predict(self, img, task_id):
+    async def predict(self, img, task_id, ws):
         """
         对单张图片执行预测
         """
         logger.info("Pipeline开始执行!")
-        await sio.emit('pipeline_started', {'task_id': task_id})
+        await update_status(ws, {'status': 'processing'})
+        await database().detections.find_one_and_update(
+            {'_id': ObjectId(task_id)},
+            {'$set': {'status': 'processing'}}
+        )
         tiles, metadata = self.pre_process(img)
         full_hm = np.zeros((img.shape[0], img.shape[1]))
 
@@ -95,8 +102,20 @@ class Pipeline:
         #
         i = 1
         for batch, metadata in zip(tiles, metadata):
-            logger.info("进度: {}/{}".format(i, len(tiles)))
-            await sio.emit('pipeline_progress', {'task_id': task_id, 'progress': i, 'total': len(tiles)})
+            logger.info("任务: {} 进度: {}/{}".format(task_id, i, len(tiles)))
+            await database().detections.find_one_and_update(
+                {'_id': ObjectId(task_id)},
+                {'$set': {
+                    "current": i,
+                    "total": len(tiles)
+                }}
+            )
+            # 更新下进度
+            await update_status(ws, {
+                "status": "processing",
+                "current": i,
+                "total": len(tiles)
+            })
             hm, metadata = self.predict_worker(batch, metadata)
             full_hm[metadata['start_y']: metadata['end_y'], metadata['start_x']: metadata['end_x']] += hm
             i += 1
@@ -197,61 +216,142 @@ class Pipeline:
 
 
 app = Sanic.get_app("SwiftNext")
-sio = app.ctx.sio
 
 pipeline = Pipeline(config.model_path)
 
+# 一个字典，task_id 对 websocket连接
+tasks_listening = {
 
-@app.signal("swiftnext.detector.new_image")
-async def do_detect(**context):
-    result = await pipeline.predict(cv2.imread(context['image_path']), context['task_id'])
-    await database().detections.find_one_and_update({"_id": ObjectId(context['task_id'])},
-                                              {"$set": {"result": result, "finished": True}})
-    await sio.emit("pipeline_finished", {"task_id": context['task_id']})
+}
+# 一个字典，保存着所有任务的未来（大雾
+tasks_futures = {
+
+}
+app.ctx.tasks_futures = tasks_futures
+app.ctx.tasks_listening = tasks_listening
 
 
-@app.post("/detector/task")
-@perm([1, 2, 3])
-async def new_task(request: Request) -> HTTPResponse:
+async def update_status(ws, data):
     """
-    新建检测任务
-    :param request:
+    更新某个任务的状态
     :return:
     """
+    # global tasks_listening
+    logger.debug("尝试更新任务状态")
+    try:
+        await ws.send(dumps(data))
+    except Exception as e:
+        pass
 
-    db = database()
-    attachment = await db.storage.find_one({"_id": ObjectId(request.json.get("attachment_id"))})
+
+async def do_detect(image_path, task_id, ws):
+    await update_status(task_id, {"status": "processing"})
+    result = await pipeline.predict(cv2.imread(image_path), task_id, ws)
+    image_shape = cv2.imread(image_path).shape
+    await database().detections.find_one_and_update({"_id": ObjectId(task_id)},
+                                                    {"$set": {
+                                                        "result": result,
+                                                        "status": "finished",
+                                                        "image_shape": image_shape
+                                                    }})
+
+    await update_status(ws, {"status": "finished", "result": result, "task_id": task_id})
+
+
+#
+# @app.post("/detector/task")
+# @perm([1, 2, 3])
+# async def new_task(request: Request) -> HTTPResponse:
+#     """
+#     新建检测任务
+#     """
+#     global tasks_futures
+#     db = database()
+#     attachment = await db.storage.find_one({"_id": ObjectId(request.json.get("attachment_id"))})
+#     if attachment is None:
+#         return json({
+#             "code": 4,
+#             "message": {
+#                 "cn": "附件不存在",
+#                 "en": "Attachment not found"
+#             }
+#         }, 404)
+#     if "image" not in attachment['mime_type']:
+#         return json({
+#             "code": 4,
+#             "message": {
+#                 "cn": "附件不是图片",
+#                 "en": "Attachment is not an image"
+#             }
+#         }, 400)
+#
+#     image_path = attachment["local_path"]
+#
+#     result = await db.detections.insert_one({"status": "listed", "attachment": request.json.get("attachment_id")})
+#     task_id = str(result.inserted_id)
+#
+#     # 开始检测
+#     future = app.add_task(
+#         do_detect(image_path, task_id)
+#     )
+#     tasks_futures[task_id] = future
+#
+#     # 这里不awaiting，因为这个任务是异步的
+#
+#     return json({
+#         "id": task_id,
+#     }, 201)
+#
+
+@app.websocket("/detector/task/ws")
+@perm([1, 2, 3])
+async def new_task_and_monitor(request: Request, ws: WebSocket):
+    """
+    新建一个任务并持续监听
+    :param request:
+    :param ws:
+    :return:
+    """
+    # 请求者需要先发送任务的相关信息
+    metadata = await ws.recv()
+    metadata = loads(metadata)
+    attachment_id = metadata.get("attachment")
+    attachment = await database().storage.find_one({"_id": ObjectId(attachment_id)})
     if attachment is None:
-        return json({
+        await ws.send(dumps({
             "code": 4,
             "message": {
                 "cn": "附件不存在",
                 "en": "Attachment not found"
             }
-        }, 404)
+        }))
+        await ws.close()
+        return
     if "image" not in attachment['mime_type']:
-        return json({
+        await ws.send(dumps({
             "code": 4,
             "message": {
                 "cn": "附件不是图片",
                 "en": "Attachment is not an image"
             }
-        }, 400)
-
-    image_path = attachment["local_path"]
-
-    result = await db.detections.insert_one({"finished": False, "attachment": request.json.get("attachment_id")})
+        }))
+        await ws.close()
+        return
+    task = {
+        "status": "listed",  # 状态：排队中
+        "attachment": attachment_id,
+    }
+    result = await database().detections.insert_one(task)
     task_id = str(result.inserted_id)
+    logger.info("创建了一个新的任务，id: %s", task_id)
 
-    # 开始检测
-    app.add_task(
-        app.dispatch("swiftnext.detector.new_image", context={'image_path': image_path, 'task_id': task_id})
-    )
-    # 这里不awaiting，因为这个任务是异步的
+    future = app.add_task(do_detect(attachment["local_path"], task_id, ws))
 
-    return json({
-        "id": task_id,
-    }, 201)
+    while not future.done():
+        await asyncio.sleep(0.5)
+        await ws.ping()
+
+    await ws.close()
 
 
 @app.get("/detector/<task_id>")
@@ -266,7 +366,37 @@ async def get_task_info(request: Request, task_id: str) -> HTTPResponse:
                 "en": "Task not found"
             }
         }, 404)
+    result["id"] = str(result["_id"])
+    del result['_id']
     return json(result)
+
+
+@app.put("/detector/<task_id>")
+@perm([1, 2, 3])
+async def update_task_info(request: Request, task_id: str) -> HTTPResponse:
+    new_result = request.json
+    try:
+        result = await database().detections.find_one_and_update({"_id": ObjectId(task_id)},
+                                                    {"$set": {"result": new_result}})
+    except bson.errors.InvalidId as e:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "任务不存在",
+                "en": "Task not found"
+            }
+        }, 404)
+
+    if result is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "任务不存在",
+                "en": "Task not found"
+            }
+        }, 404)
+
+    return response.empty()
 
 
 @app.delete("/detector/<task_id>")

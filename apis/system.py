@@ -1,11 +1,14 @@
 """
 系统类API /system
 """
+import asyncio
+
 from sanic import Sanic, HTTPResponse, Request, json
+from websocket import WebSocket
 import hashlib
 import psutil
+from json import dumps
 
-import vertex
 
 app = Sanic.get_app("SwiftNext")
 
@@ -39,12 +42,27 @@ async def get_memory(request: Request) -> HTTPResponse:
     })
 
 
-@app.ctx.sio.on("memory")
-async def memory(sid, data):
-    # 获取系统内存信息
+@app.websocket("/memory")
+async def memory(request: Request, ws: WebSocket):
+    """
+    监听系统内存变化
+    """
+    # 初始化内存信息
     mem = psutil.virtual_memory()
-    data = {
+    # 发送初始化内存信息
+    await ws.send(dumps({
         "total_capacity": mem.total,
         "used_capacity": mem.used,
-    }
-    app.ctx.sio.emit("memory", data)
+    }))
+    # 循环监听内存变化
+    while True:
+        # 获取内存信息
+        mem = psutil.virtual_memory()
+        # 发送内存信息
+        await ws.send(dumps({
+            "total_capacity": mem.total,
+            "used_capacity": mem.used,
+        }))
+        # 等待1秒
+        await asyncio.sleep(1)
+

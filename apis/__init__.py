@@ -1,4 +1,5 @@
 import asyncio
+from json import dumps
 
 from sanic import Sanic, json, Request
 from sanic.log import logger
@@ -9,12 +10,13 @@ def register_apis():
     app = Sanic.get_app("SwiftNext")
     logger.info("注册API / => index")
 
-    @app.route("/")
+    @app.get("/")
     def index(request: Request):
         session = deepcopy(request.ctx.session)
         session['expire_at'] = session['expire_at'].timestamp()
         return json({"message": "Hello!!", "session": session,
                      "session_need_update": request.ctx.session_need_update})
+
 
     logger.info("注册系统类API /system/ => system")
     import apis.system
@@ -44,7 +46,6 @@ def perm(level):
     def wrapper(func):
         async def _(request, *args, **kwargs):
             # 检验权限
-            logger.info(request.ctx.session)
             if request.ctx.session['permission'] in level:
                 return await func(request, *args, **kwargs)
             else:

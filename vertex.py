@@ -33,18 +33,18 @@ async def before_request(request: Request):
                 "ip_banned": False
             }
         }, 403)
-    logger.info(request.method)
-    if request.method == "OPTIONS":
-        return response.empty()
+    # logger.info(request.method)
+    # if request.method == "OPTIONS":
+    #     return response.empty()
 
 
-@app.middleware("response")
-async def cors(request, response):
-    response.headers['Access-Control-Allow-Origin'] = request.headers.get('origin')
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-    response.headers[
-        'Access-Control-Allow-Headers'] = 'origin, content-type, accept, authorization, x-xsrf-token, x-request-id'
+# @app.middleware("response")
+# async def cors(request, response):
+#     response.headers['Access-Control-Allow-Origin'] = request.headers.get('origin')
+#     response.headers['Access-Control-Allow-Credentials'] = 'true'
+#     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+#     response.headers[
+#         'Access-Control-Allow-Headers'] = 'origin, content-type, accept, authorization, x-xsrf-token, x-request-id'
 
 
 # # 一个函数装饰器，用于记录请求频率

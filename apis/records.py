@@ -39,7 +39,7 @@ async def new_record(request: Request) -> HTTPResponse:
     """
     新建填报
     必备字段：group_id, num, time, project, position
-    可选字段：collaborators, specific_location, origination, related_detections, attachments
+    可选字段：collaborators, specific_location, origination, related_detections, attachments, description
     """
     record = request.json
     record["_id"] = ObjectId()
@@ -92,7 +92,19 @@ async def new_record(request: Request) -> HTTPResponse:
             }, 400)
 
     if "related_detections" in record:
-        record["related_detections"] = [ObjectId(d) for d in record["related_detections"]]
+        for detection in record["related_detections"]:
+            if not await database().detections.find_one({"_id": ObjectId(detection)}):
+                return json({
+                    "code": 4,
+                    "message": {
+                        "cn": "相关检测不存在",
+                        "en": "Invalid detection"
+                    },
+                    "description": {
+                        "id": detection
+                    }
+                }, 400)
+
     if "attachments" in record:
         record["attachments"] = [ObjectId(a) for a in record["attachments"]]
 
@@ -208,3 +220,17 @@ async def delete_record_draft(request: Request) -> HTTPResponse:
     uid = request.ctx.session['user']['uid']
     await database().drafts.delete_many({"uid": uid, "type": "record"})
     return response.empty(204)
+
+
+@app.get("/records/count")
+@perm([1, 2, 3])
+async def get_records_number(request: Request) -> HTTPResponse:
+    """
+    获取全站的填报数量
+    :param request:
+    :return:
+    """
+    query = {}
+    if 'group' in request.args.keys():
+        query['group_id'] = request.args.get('group')
+    return json(await database().records.count_documents(query))
