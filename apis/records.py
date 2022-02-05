@@ -33,6 +33,41 @@ async def get_user_record(request: Request, uid: str) -> HTTPResponse:
     return json(list(records) + list(engaged_records))
 
 
+@app.patch("/records/<record_id>")
+@perm([1, 2, 3])
+async def edit_record(request: Request, record_id: str) -> HTTPResponse:
+    """
+    修改某个填报
+    可修改字段：num，time，collaborators，origination，attachments，description
+    :param request:
+    :param record_id:
+    :return:
+    """
+    record = await database().records.find_one({"_id": ObjectId(record_id)})
+    if record is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "找不到相关填报记录",
+                "en": "No record found"
+            }
+        }, 404)
+    if "num" in request.json.keys():
+        record["num"] = request.json["num"]
+    if "time" in request.json.keys():
+        record["time"] = request.json["time"]
+    if "collaborators" in request.json.keys():
+        record["collaborators"] = request.json["collaborators"]
+    if "origination" in request.json.keys():
+        record["origination"] = request.json["origination"]
+    if "attachments" in request.json.keys():
+        record["attachments"] = request.json["attachments"]
+    if "description" in request.json.keys():
+        record["description"] = request.json["description"]
+    await database().records.update_one({"_id": ObjectId(record_id)}, {"$set": record})
+    return json(record)
+
+
 @app.post("/records")
 @perm([1, 2, 3])
 async def new_record(request: Request) -> HTTPResponse:

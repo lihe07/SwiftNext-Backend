@@ -296,12 +296,12 @@ async def edit_group(request: Request, group_id: str) -> HTTPResponse:
     return await get_group(request, group_id)
 
 
-
 @app.delete("/groups/<group_id>/members/<member_id>")
 @perm([1, 2, 3])
 async def quit_group(request: Request, group_id: str, member_id: str) -> HTTPResponse:
     # 如果是管理员，则不能退出小组
-    if request.ctx.session['user']['uid'] in (await database().groups.find_one({"_id": ObjectId(group_id)}))['managers']:
+    if request.ctx.session['user']['uid'] in (await database().groups.find_one({"_id": ObjectId(group_id)}))[
+        'managers']:
         return json({
             "code": 1001,
             "message": {
