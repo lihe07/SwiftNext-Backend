@@ -6,6 +6,7 @@ from sanic import Sanic, response, Request, HTTPResponse, json
 from config import database
 from bson import ObjectId
 from apis import perm
+from .users import randstr
 
 app = Sanic.get_app("SwiftNext")
 
@@ -46,6 +47,16 @@ async def check_invitation(request: Request, invitation_id: str) -> HTTPResponse
 async def create_invitation(request: Request) -> HTTPResponse:
     group_id = request.json.get('group_id')
     expire_at = request.json.get('expire_at')
+    permission = request.json.get('permission')
+    if permission not in [1, 2]:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "权限不合法",
+                "en": "Permission is invalid"
+            }
+        }, 400)
+
     if not group_id or not expire_at:
         return json({
             "code": 4,
@@ -78,10 +89,12 @@ async def create_invitation(request: Request) -> HTTPResponse:
         "type": 'group',
         "group_id": group_id,
         "expire_at": datetime.datetime.fromtimestamp(expire_at),
+        "permission": permission,
+        "code": randstr(10),
     }
     result = await database().invitations.insert_one(invitation)
     return json({
-        "id": str(result.inserted_id)
+        "code": invitation['code']
     })
 
 
@@ -235,7 +248,7 @@ async def get_group_members(request: Request, group_id: str) -> HTTPResponse:
                     "en": "Group does not exist"
                 }
             }, 404)
-        members = await database().users.find({"groups": {"$elemMatch": {"$eq": group_id}}}, {'_id': 1}).to_list(None)
+        members = await database().users.find({"group": group_id}, {'_id': 1}).to_list(None)
         return json([str(member['_id']) for member in members])
     except bson.errors.InvalidId:
         return json({
@@ -300,8 +313,9 @@ async def edit_group(request: Request, group_id: str) -> HTTPResponse:
 @perm([1, 2, 3])
 async def quit_group(request: Request, group_id: str, member_id: str) -> HTTPResponse:
     # 如果是管理员，则不能退出小组
-    if request.ctx.session['user']['uid'] in (await database().groups.find_one({"_id": ObjectId(group_id)}))[
-        'managers']:
+    if (request.ctx.session['user']['uid'] in (await database().groups.find_one({"_id": ObjectId(group_id)}))[
+        'managers']) \
+            and (request.ctx.session['user']['uid'] == member_id):
         return json({
             "code": 1001,
             "message": {
@@ -318,18 +332,17 @@ async def quit_group(request: Request, group_id: str, member_id: str) -> HTTPRes
                 "message": {
                     "cn": "小组不存在",
                     "en": "Group does not exist"
-
                 }
             }, 404)
-        await database().users.update_one({"_id": ObjectId(member_id)}, {
-            "$pull": {
-                "groups": group_id
+        await database().users.update_one({
+            "_id": ObjectId(member_id),
+            "group": group_id
+        }, {
+            "$unset": {
+                "group": True
             }
         })
-        group = await database().groups.find_one({"_id": ObjectId(group_id)})
-        group['id'] = str(group['_id'])
-        del group['_id']
-        return json(group)
+        return response.empty(204)
     except bson.errors.InvalidId:
         return json({
             "code": 1001,

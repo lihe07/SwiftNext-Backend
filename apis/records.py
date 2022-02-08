@@ -26,11 +26,19 @@ async def get_record(request: Request, record_id: str) -> HTTPResponse:
 @app.get("/records/user/<uid>")
 @perm([1, 2, 3])
 async def get_user_record(request: Request, uid: str) -> HTTPResponse:
-    uid = ObjectId(uid)
-    records = await database().records.find({"uid": uid})
+    records = await database().records.find({"uid": uid}).to_list(None)
     engaged_records = await database().records.find(
-        {"collaborators": {"$elemMatch": {"$eq": uid}}})  # 所有collaborators中包含uid的记录
-    return json(list(records) + list(engaged_records))
+        {"collaborators": {"$elemMatch": {"$eq": uid}}}).to_list(None)  # 所有collaborators中包含uid的记录
+    for record in records:
+        record['id'] = str(record['_id'])
+        del record['_id']
+    for record in engaged_records:
+        record['id'] = str(record['_id'])
+        del record['_id']
+    return json({
+        "records": records,
+        "engaged_records": engaged_records
+    })
 
 
 @app.patch("/records/<record_id>")
@@ -68,6 +76,19 @@ async def edit_record(request: Request, record_id: str) -> HTTPResponse:
     return json(record)
 
 
+async def get_running_project():
+    """
+    获取running: true的项目信息
+    :return:
+    """
+    project = await database().projects.find_one({"running": True})
+    project['id'] = str(project['_id'])
+    del project['_id']
+    if project is None:
+        return None
+    return project
+
+
 @app.post("/records")
 @perm([1, 2, 3])
 async def new_record(request: Request) -> HTTPResponse:
@@ -81,9 +102,18 @@ async def new_record(request: Request) -> HTTPResponse:
     # record["uid"] = request.user["_id"]
     record['uid'] = request.ctx.session['user']['uid']
     record["group_id"] = record["group_id"]
-    record["time"] = int(record["time"])
+    record["time"] = datetime.datetime.utcfromtimestamp(record["time"])
     record["num"] = int(record["num"])
-    record["project"] = record["project"]
+    project = await get_running_project()
+    if project is None:
+        return json({
+            "code": 1001,
+            "message": {
+                "cn": "当前没有运行中的项目",
+                "en": "No running project"
+            }
+        }, 400)
+    record["project"] = project["id"]
     if "collaborators" in record:
         # 检查collaborators是否为有效用户
         for collaborator in record["collaborators"]:
@@ -145,7 +175,7 @@ async def new_record(request: Request) -> HTTPResponse:
 
     # 检查该调查点是否属于该调查小组
     position = await database().positions.find_one(
-        {"_id": ObjectId(record["position"]), "belongs_to": ObjectId(record["group_id"])})
+        {"_id": ObjectId(record["position"]), "belongs_to": record["group_id"]})
     if position is None:
         return json({
             "code": 4,
@@ -157,9 +187,9 @@ async def new_record(request: Request) -> HTTPResponse:
                 "position": record["position"],
                 "group_id": record["group_id"],
             }
-        })
+        }, 400)
     await database().records.insert_one(record)
-    return json(record)
+    return response.empty(201)
 
 
 @app.get("/records")
@@ -195,6 +225,44 @@ async def get_records(request: Request) -> HTTPResponse:
     return json(records)
 
 
+@app.delete("/records/{record_id}")
+@perm([1, 2, 3])
+async def delete_record(request: Request, record_id: str) -> HTTPResponse:
+    """
+    删除填报记录
+    :param request:
+    :param record_id:
+    :return:
+    """
+    record = await database().records.find_one({"_id": ObjectId(record_id)})
+    if not record:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "记录不存在",
+                "en": "Invalid record"
+            },
+            "description": {
+                "id": record_id
+            }
+        }, 400)
+    # 普通志愿者只能删除自己创建的记录
+    if request.ctx.session['permission'] == 1 and record["uid"] != request.ctx.session['user']['uid']:
+        return json({
+            "code": 1,
+            "message": {
+                "cn": "普通志愿者只能删除自己创建的记录",
+                "en": "Only the creator can delete the record"
+            },
+            "description": {
+                "creator": record["uid"],
+            }
+        }, 403)
+    # 删除记录
+    await database().records.delete_one({"_id": ObjectId(record_id)})
+    return response.empty(204)
+
+
 # 一些跟草稿有关的接口
 @app.get("/drafts")
 @perm([1, 2, 3])
@@ -220,7 +288,7 @@ async def get_record_draft(request: Request) -> HTTPResponse:
     :return:
     """
     uid = request.ctx.session['user']['uid']
-    draft = await database().drafts.find_one({"uid": uid, "type": "record"})
+    draft = await database().drafts.find_one({"uid": uid, "type": "record"}, {"_id": 0})
     if draft is None:
         return response.empty(404)
     return json(draft)

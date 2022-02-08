@@ -74,6 +74,29 @@ class Pipeline:
         hm = cv2.resize(hm, None, fx=metadata['width_scale'] * 4, fy=metadata['height_scale'] * 4)
         return hm, metadata
 
+    @staticmethod
+    def distance(p1, p2):
+        return p1[0] - p2[0] ** 2 + p1[1] - p2[1] ** 2
+
+    @staticmethod
+    def nms(scores, points):
+        """
+        对点执行NMS，距离小于3的点只保留1个
+        :param scores:
+        :param points:
+        :return:
+        """
+        keep = []
+        for i in range(len(scores)):
+            if i in keep:
+                continue
+            for j in range(i + 1, len(scores)):
+                if j in keep:
+                    continue
+                if Pipeline.distance(points[j], points[i]) < 3:
+                    keep.append(j)
+        return keep
+
     async def predict(self, img, task_id, ws):
         """
         对单张图片执行预测
@@ -124,7 +147,9 @@ class Pipeline:
 
         scores, points = heatmap_top_k(full_hm, self.num)
         result = []
-        for score, point in zip(scores, points):
+        keep = self.nms(scores, points)
+        for index in keep:
+            score, point = scores[index], points[index]
             result.append({
                 "score": float(score),
                 "x": int(point[1]),
@@ -377,7 +402,7 @@ async def update_task_info(request: Request, task_id: str) -> HTTPResponse:
     new_result = request.json
     try:
         result = await database().detections.find_one_and_update({"_id": ObjectId(task_id)},
-                                                    {"$set": {"result": new_result}})
+                                                                 {"$set": {"result": new_result}})
     except bson.errors.InvalidId as e:
         return json({
             "code": 4,
@@ -419,3 +444,24 @@ async def delete_task(request: Request, task_id: str) -> HTTPResponse:
 
     result = await database().detections.delete_one({"_id": ObjectId(task_id)})
     return response.empty()
+
+
+@app.post("/detector/compute")
+async def compute_number(request: Request) -> HTTPResponse:
+    """
+    计算多个检测结果的总数 / 最大值
+    """
+    func = sum
+    if request.json.get("method") == "max":
+        func = max
+    task_ids = request.json.get("tasks")
+    threshold = request.json.get("threshold")
+    tasks = database().detections.find({"_id": {"$in": [ObjectId(task_id) for task_id in task_ids]}})
+    nums = []
+    async for task in tasks:
+        result = task["result"]
+        result = [r for r in result if r["score"] >= threshold]
+        nums.append(len(result))
+    if len(nums) == 0:
+        return json(0)
+    return json(func(nums))

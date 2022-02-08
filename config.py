@@ -1,6 +1,10 @@
 import datetime
+import smtplib
 
 from motor.motor_asyncio import AsyncIOMotorClient
+from email.mime.text import MIMEText
+from email.header import Header
+from email.utils import formataddr
 
 # 数据库位置
 mongo_uri = 'mongodb://192.168.1.42:27017/'
@@ -39,3 +43,28 @@ def database():
 
 def client():
     return AsyncIOMotorClient(mongo_uri)
+
+
+def get_email_message(name, code, expire_minutes, lang):
+    if lang == "en":
+        with open("./verify_code.en.html") as f:
+            template = f.read()
+        subject = "Verification code for SwiftNext"
+    else:
+        with open("./verify_code.cn.html") as f:
+            template = f.read()
+        subject = "SwiftNext验证码"
+    template = template.replace("%username%", name)
+    template = template.replace("%code%", str(code))
+    template = template.replace("%expire%", str(expire_minutes))
+    message = MIMEText(template, 'html', 'utf-8')
+    message['From'] = formataddr(("SwiftNext", smtp_user))
+    message['To'] = formataddr((name, name))
+    message['Subject'] = Header(subject, 'utf-8')
+    return message
+
+
+def get_smtp():
+    obj = smtplib.SMTP(smtp_server, smtp_port)
+    obj.login(smtp_user, smtp_password)
+    return obj

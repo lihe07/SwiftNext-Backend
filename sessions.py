@@ -75,7 +75,8 @@ async def session_manager(request: Request):
                 # 如果这个session是登录的，为其设置用户信息
                 user = await database().users.find_one({"_id": ObjectId(session['user'])})
                 user['uid'] = str(user['_id'])
-                user.pop('_id')
+                del user['password']
+                del user['_id']
                 session['user'] = user
             request.ctx.session = session
             request.ctx.session_need_update = False

@@ -22,7 +22,10 @@ async def get_position(request: Request, position_id: str) -> HTTPResponse:
     if result:
         return json({
             "longitude": result["longitude"],
-            "latitude": result["latitude"]
+            "latitude": result["latitude"],
+            "id": str(result["_id"]),
+            "belongs_to": str(result["belongs_to"]),
+            "name": result["name"]
         })
     else:
         return json({
@@ -74,7 +77,7 @@ async def new_position(request: Request) -> HTTPResponse:
         "belongs_to": group_id,
         "longitude": longitude,
         "latitude": latitude,
-        "created_at": datetime.datetime.utcnow()
+        "name": name
     })
     return json({
         "id": str(result.inserted_id)
@@ -104,3 +107,28 @@ async def get_groups_positions(request: Request, group_id: str) -> HTTPResponse:
         point['id'] = str(point['_id'])
         del point['_id']
     return json(result)
+
+
+@app.put("/positions/by_group/<group_id>")
+@perm([2, 3])
+async def replace_group_positions(request: Request, group_id: str) -> HTTPResponse:
+    """
+    替换某个小组的全部调查点
+    :param request:
+    :param group_id:
+    :return:
+    """
+    # 找出小组的全部调查点，并删除
+    positions = await database().positions.find({"belongs_to": group_id}).to_list(None)
+    if positions is not None:
+        for position in positions:
+            await database().positions.delete_one({"_id": position["_id"]})
+    # 添加新的调查点
+    for position in request.json:
+        await database().positions.insert_one({
+            "belongs_to": group_id,
+            "longitude": position["longitude"],
+            "latitude": position["latitude"],
+            "name": position["name"]
+        })
+    return response.empty(204)

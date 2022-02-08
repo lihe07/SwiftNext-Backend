@@ -17,7 +17,6 @@ def register_apis():
         return json({"message": "Hello!!", "session": session,
                      "session_need_update": request.ctx.session_need_update})
 
-
     logger.info("注册系统类API /system/ => system")
     import apis.system
     logger.info("注册用户类API /users/ => users")

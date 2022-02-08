@@ -1,9 +1,12 @@
 import datetime
+import string
 import uuid
+import random
 
 from bson import ObjectId
 from bson.errors import InvalidId
 
+import config
 import vertex
 from apis import perm, try_until_success
 from sanic import Sanic, HTTPResponse, Request, json, response
@@ -11,6 +14,12 @@ from config import database, client
 from sanic.log import logger
 
 app = Sanic.get_app("SwiftNext")
+
+
+def randstr(num):
+    salt = ''.join(random.sample(string.ascii_letters + string.digits, num))
+
+    return salt
 
 
 # 一个函数，用于验证一个字符串的长度是否达标
@@ -52,19 +61,18 @@ def check_range(number, min_number, max_number):
 @app.post("/users")
 @perm([0, 3])
 async def create_user(request: Request) -> HTTPResponse:
+    """
+    请求参数:
+        对于访客：
+        code: 验证码
+    """
     db = database()
-    if request.ctx.session.permission == 0:
+    if request.ctx.session['permission'] == 0 and request.json.get("code") is not None:
         # 针对访客: 尝试验证邮箱验证码 并获取邀请内容
-        async def _():
-            _temp_user = await db.inactive_users.find_one({
-                "_id": ObjectId(request.json.get("code"))
-            })
-            _invitation = await db.invitations.find_one({
-                "_id": ObjectId(_temp_user.get("invitation"))
-            })
-            return _temp_user, _invitation
+        temp_user = await db.inactive_users.find_one({
+            "code": request.json.get("code")
+        })
 
-        temp_user, invitation = await try_until_success(_)
         if temp_user is None:
             # 邮箱验证码不正确 或 验证码已过期
             return json({
@@ -77,63 +85,45 @@ async def create_user(request: Request) -> HTTPResponse:
                     "code": request.json.get("code"),
                 }
             }, 406)
-        elif invitation is None:
-            # 邀请已经过期
-            return json({
-                "code": 1002,
-                "message": {
-                    "cn": "邀请已经过期",
-                    "en": "The invitation has expired"
-                },
-                "description": {
-                    "code": request.json.get("code"),
-                    "invitation": request.json.get("invitation")
-                }
-            }, 406)
-        elif invitation.get("type") != "register":
-            # 邀请类型不正确
-            return json({
-                "code": 1003,
-                "message": {
-                    "cn": "邀请类型不正确",
-                    "en": "The invitation type is incorrect"
-                },
-                "description": {
-                    "code": request.json.get("code"),
-                    "invitation": request.json.get("invitation")
-                }
-            }, 406)
         else:
-            # 创建新的事务
-            c = client()
-            db = c.swiftnext
             try:
-                with c.start_session(causal_consistency=True) as session:
-                    # with 保证session的正确关闭
-                    with session.start_transaction():
-                        # 1. 创建用户
-                        result = await db.users.insert_one({
-                            "email": temp_user["email"],
-                            "password": temp_user["password"],
-                            "permission": invitation["permission"],
-                            "group_id": invitation["group_id"],
-                        })
-                        uid = result.inserted_id
-                        logger.info("新用户的ID: {}".format(uid))
-                        # 2. 删除邀请
-                        await db.invitations.delete_one({
-                            "_id": ObjectId(invitation["_id"])
-                        })
-                        # 3. 删除临时用户
-                        await db.inactive_users.delete_one({
-                            "_id": ObjectId(temp_user["_id"])
-                        })
-                return json({
-                    "uid": str(uid),
-                    "group_id": invitation["group_id"],
-                    "inviter": invitation["inviter"],
+                # 1. 创建用户
+                if temp_user.get("group"):
+                    result = await database().users.insert_one({
+                        "email": temp_user["email"],
+                        "password": temp_user["password"],
+                        "permission": temp_user["permission"],
+                        "group": temp_user.get("group"),
+                        "name": temp_user.get("name"),
+                    })
+                else:
+                    result = await database().users.insert_one({
+                        "email": temp_user["email"],
+                        "password": temp_user["password"],
+                        "permission": temp_user["permission"],
+                        "name": temp_user.get("name"),
+                    })
+                uid = result.inserted_id
+                logger.info("新用户的ID: {}".format(uid))
+                # 2. 删除邀请
+                await database().invitations.delete_one({
+                    "code": temp_user["invitation"]
                 })
+                # 3. 删除临时用户
+                await database().inactive_users.delete_one({
+                    "_id": temp_user["_id"]
+                })
+                if temp_user.get("group"):
+                    return json({
+                        "uid": str(uid),
+                        "group": temp_user["group"],
+                    })
+                else:
+                    return json({
+                        "uid": str(uid),
+                    })
             except BaseException as e:
+                logger.error(e)
                 return json({
                     "code": 3,
                     "message": {
@@ -207,7 +197,7 @@ async def create_user(request: Request) -> HTTPResponse:
         # 检验小组id是否合法
         async def _():
             return await db.groups.find_one({
-                "_id": ObjectId(request.json.get("group_id"))
+                "_id": ObjectId(request.json.get("group"))
             }) is not None
 
         if not await try_until_success(_):
@@ -231,7 +221,7 @@ async def create_user(request: Request) -> HTTPResponse:
                         "email": request.json.get("email"),
                         "password": request.json.get("password"),
                         "permission": request.json.get("permission"),
-                        "group_id": request.json.get("group_id"),
+                        "group": request.json.get("group"),
                     })
                     uid = result.inserted_id
             # 成功返回新用户的uid
@@ -436,7 +426,7 @@ async def new_register_invitation(request: Request) -> HTTPResponse:
                 }
             }, 403)
     # 为了防止撞库，邀请ID必须随机生成
-    invite_id = str(uuid.uuid4())
+    invite_id = randstr(10)
 
     # 检查group_id是否合法
     if request.json.get("group_id") is not None:
@@ -452,39 +442,36 @@ async def new_register_invitation(request: Request) -> HTTPResponse:
                 }
             }, 406)
         # 创建新的注册邀请
-        result = database().invitations.insert_one({
-            "_id": ObjectId(invite_id),
+        result = await database().invitations.insert_one({
+            "code": invite_id,
             "expire_at": expire_at,
             "group_id": request.json.get("group_id"),
             "type": "register",
             "permission": permission
         })
         return json({
-            "id": str(result.inserted_id),
+            "code": invite_id,
         })
 
     else:
         # 创建新的注册邀请
-        result = database().invitations.insert_one({
-            "_id": ObjectId(invite_id),
+        result = await database().invitations.insert_one({
+            "code": invite_id,
             "expire_at": expire_at,
             "type": "register",
             "permission": permission
         })
         return json({
-            "id": str(result.inserted_id),
+            "code": invite_id,
         })
 
 
-@app.get("/users/register_invitations/<invitation_id>")
-async def get_register_invitation(request: Request, invitation_id: str) -> HTTPResponse:
+@app.get("/users/register_invitations/<code>")
+async def get_register_invitation(request: Request, code: str) -> HTTPResponse:
     """
     从数据库查询某个注册邀请
-    :param request:
-    :param invitation_id:
-    :return:
     """
-    result = await database().invitations.find_one({"_id": ObjectId(invitation_id), "type": "register"})
+    result = await database().invitations.find_one({"code": code, "type": "register"})
     if result is None:
         return json({
             "code": 4,
@@ -493,12 +480,13 @@ async def get_register_invitation(request: Request, invitation_id: str) -> HTTPR
                 "en": "The invitation does not exist"
             },
             "description": {
-                "invitation_id": invitation_id
+                "code": code
             }
         }, 404)
     return json({
         "id": str(result["_id"]),
-        "expire_at": result["expire_at"],
+        "code": result["code"],
+        "expire_at": result["expire_at"].timestamp(),
         "group_id": str(result["group_id"]) if result["group_id"] is not None else None,
         "permission": result["permission"]
     })
@@ -611,3 +599,122 @@ async def get_all_users(request: Request) -> HTTPResponse:
         del user['_id']
         result.append(user)
     return json(result)
+
+
+@app.post("/users/inactive")
+async def new_inactive_user(request: Request) -> HTTPResponse:
+    """
+    创建新的未激活用户
+    需要的字段：
+        invitation
+        name
+        password
+        email
+        lang (cn / en)
+    """
+    # 检查邀请码是否存在
+    invitation = await database().invitations.find_one({"code": request.json["invitation"]})
+    if invitation is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "邀请码不存在",
+                "en": "The invitation code does not exist"
+            },
+            "description": {
+                "invitation": request.json["invitation"]
+            }
+        }, 404)
+    # 检查邀请码是否已过期
+    if invitation["expire_at"] < datetime.datetime.utcnow():
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "邀请码已过期",
+                "en": "The invitation code has expired"
+            },
+            "description": {
+                "invitation": request.json["invitation"]
+            }
+        }, 403)
+    # 检查用户名是否存在
+    if await database().users.find_one({"name": request.json["name"]}) is not None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "用户名已存在",
+                "en": "The user name already exists"
+            },
+            "description": {
+                "name": request.json["name"]
+            }
+        }, 403)
+    # 检查邮箱是否存在
+    if await database().users.find_one({"email": request.json["email"]}) is not None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "邮箱已存在",
+                "en": "The email already exists"
+            },
+            "description": {
+                "email": request.json["email"]
+            }
+        }, 403)
+    # 检查密码是否合法
+    if len(request.json["password"]) < 8:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "密码长度不足",
+                "en": "The password length is too short"
+            },
+            "description": {
+                "password": request.json["password"]
+            }
+        }, 403)
+    # 检查邮箱是否合法
+    if not check_email(request.json["email"]):
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "邮箱不合法",
+                "en": "The email is not valid"
+            }
+        }, 400)
+    # 生成一个验证码
+    code = str(random.randint(100000, 999999))
+    # 过期时间 = 当前时间 + 5分钟
+    expire_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
+    # 尝试发送验证邮箱
+    email_content = config.get_email_message(
+        request.json.get("name"),
+        code,
+        5,
+        request.json.get("lang")
+    )
+    try:
+        config.get_smtp().sendmail(config.notify_email, [request.json["email"]], email_content.as_string())
+    except Exception as e:
+        return json({
+            "code": 1001,
+            "message": {
+                "cn": "邮件发送失败",
+                "en": "Failed to send email"
+            },
+            "description": {
+                "error": str(e)
+            }
+        }, 500)
+    # 尝试创建临时用户
+    database().inactive_users.insert_one({
+        "invitation": request.json["invitation"],
+        "name": request.json["name"],
+        "password": request.json["password"],
+        "email": request.json["email"],
+        "code": code,
+        "expire_at": expire_at,
+        "permission": invitation["permission"],
+        "group": invitation["group"],
+    })
+    return response.empty(201)

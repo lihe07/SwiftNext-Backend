@@ -26,7 +26,7 @@ def not_found(request, exception):
 def server_error(request, exception):
     return json({
         "code": 500,
-        "description": "Internal Server Error",
+        "description": str(exception),
         "message": {
             "cn": "服务器内部错误! 请联系管理员!",
             "en": "Internal Server Error! Please contact the administrator!"

@@ -3,11 +3,13 @@
 """
 import datetime
 import hashlib
+import io
 import os.path
 import uuid
 
 import aiofiles
 import bson.errors
+import cv2
 from bson import ObjectId
 from sanic import Sanic, Request, HTTPResponse, response, json
 from sanic.log import logger
@@ -157,6 +159,84 @@ async def get_inline(request: Request, fid: str):
         "Cache-Control": "max-age=86400",  # 控制缓存 1天
     })
 
+
+@app.get("/storage/inline/<fid>/w/<width>/h/<height>")
+async def get_sized_image(request: Request, fid: str, width: int, height: int):
+    """
+    获取图片的缩略图
+    :param request:
+    :param fid:
+    :param width:
+    :param height:
+    :return:
+    """
+    if fid is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "请指定一个文件ID",
+                "en": "Please specify a file ID"
+            }
+        }, 400)
+    try:
+        result = await config.database().storage.find_one({"_id": ObjectId(fid)})
+    except bson.errors.InvalidId:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "指定的文件不存在",
+                "en": "The specified file does not exist"
+            },
+            "description": {
+                "file_id": fid
+            }
+        }, 404)
+    if result is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "指定的文件不存在",
+                "en": "The specified file does not exist"
+            },
+            "description": {
+                "file_id": fid
+            }
+        }, 404)
+    if result["mime_type"] != "image/jpeg":
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "指定的文件不是图片",
+                "en": "The specified file is not an image"
+            },
+            "description": {
+                "file_id": fid,
+                "mime_type": result["mime_type"]
+            }
+        }, 400)
+    if width is None or height is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "请指定宽度和高度",
+                "en": "Please specify width and height"
+            }
+        }, 400)
+    if width <= 0 or height <= 0:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "宽度和高度必须大于0",
+                "en": "Width and height must be greater than 0"
+            }
+        }, 400)
+    img = cv2.imread(result["local_path"])
+    img = cv2.resize(img, (width, height))
+    content = cv2.imencode(".jpg", img)[1].tobytes()
+    return response.raw(content, headers={
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "max-age=86400",  # 控制缓存 1天
+    })
 
 @app.get("/storage/download/<fid>")
 async def get_download(request: Request, fid: str):
