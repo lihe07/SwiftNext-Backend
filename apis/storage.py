@@ -15,11 +15,11 @@ from sanic import Sanic, Request, HTTPResponse, response, json
 from sanic.log import logger
 from sanic.response import ResponseStream
 
-from apis import perm
+from apis import perm, app
 import config
 import mimetypes
 
-app = Sanic.get_app("SwiftNext")
+
 
 
 @app.post("/storage", stream=False)

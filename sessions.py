@@ -94,6 +94,7 @@ async def check_fingerprint(request: Request, response: HTTPResponse):
             response.cookies["fingerprint"] = request.ctx.session.get("fingerprint")
             response.cookies["fingerprint"]["samesite"] = "None"
             response.cookies["fingerprint"]["secure"] = True
+            response.cookies["fingerprint"]["domain"] = ".bwrrc.org.cn"
             # response.cookies["fingerprint"]["domain"] = "localhost:3000"
             sess = request.ctx.session
             if 'user' in sess.keys():

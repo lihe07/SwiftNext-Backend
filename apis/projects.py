@@ -1,9 +1,8 @@
 from sanic import Sanic, json, Request, HTTPResponse, response
 from config import database
-from apis import perm
+from apis import perm, app
 from bson import ObjectId
 
-app = Sanic.get_app("SwiftNext")
 
 
 @app.get("/projects")

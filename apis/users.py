@@ -8,12 +8,10 @@ from bson.errors import InvalidId
 
 import config
 import vertex
-from apis import perm, try_until_success
+from apis import perm, try_until_success, app
 from sanic import Sanic, HTTPResponse, Request, json, response
 from config import database, client
 from sanic.log import logger
-
-app = Sanic.get_app("SwiftNext")
 
 
 def randstr(num):
@@ -72,7 +70,7 @@ async def create_user(request: Request) -> HTTPResponse:
         temp_user = await db.inactive_users.find_one({
             "code": request.json.get("code")
         })
-
+        logger.info(request.json.get("code"))
         if temp_user is None:
             # 邮箱验证码不正确 或 验证码已过期
             return json({
@@ -715,6 +713,6 @@ async def new_inactive_user(request: Request) -> HTTPResponse:
         "code": code,
         "expire_at": expire_at,
         "permission": invitation["permission"],
-        "group": invitation["group"],
+        "group": invitation["group_id"],
     })
     return response.empty(201)

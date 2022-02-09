@@ -8,9 +8,7 @@ from websocket import WebSocket
 import hashlib
 import psutil
 from json import dumps
-
-
-app = Sanic.get_app("SwiftNext")
+from apis import app
 
 
 @app.post("/system/encrypt")

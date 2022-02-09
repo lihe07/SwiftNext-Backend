@@ -20,7 +20,7 @@ from operators import max_pooling, heatmap_top_k, median_blur
 from websocket import WebSocket
 
 import config
-from apis import perm, storage
+from apis import perm, storage, app
 from config import database
 
 heatmap_top_k(np.random.rand(10, 10), 10)
@@ -240,7 +240,8 @@ class Pipeline:
         return tiles, metadata
 
 
-app = Sanic.get_app("SwiftNext")
+# app = Sanic.get_app("SwiftNext")
+
 
 pipeline = Pipeline(config.model_path)
 

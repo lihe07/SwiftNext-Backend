@@ -1,11 +1,12 @@
 from sanic import Sanic, Request, HTTPResponse, json
-from apis import perm
+from apis import perm, app
 from config import database
 
-app = Sanic.get_app("SwiftNext")
+# app = Sanic.get_app("SwiftNext")
 
 
 @app.get("/notifications")
+@perm([1, 2, 3])
 async def get_my_notifications(request: Request) -> HTTPResponse:
     if "num" in request.args.keys():
         num = int(request.args.get("num"))

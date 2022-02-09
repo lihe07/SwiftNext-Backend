@@ -33,8 +33,12 @@ smtp_port = 25
 smtp_user = notify_email
 # 邮件服务器密码
 smtp_password = 'BwR2C@2022bEijIng'
-
+# 模型的地址
 model_path = "./model.best.onnx"
+# dist的位置 包括favicon.ico和index.html
+dist_path = "../SwiftNext-Frontend/dist"
+# assets的位置
+assets_path = "../SwiftNext-Frontend/dist/assets"
 
 
 def database():
@@ -59,7 +63,7 @@ def get_email_message(name, code, expire_minutes, lang):
     template = template.replace("%expire%", str(expire_minutes))
     message = MIMEText(template, 'html', 'utf-8')
     message['From'] = formataddr(("SwiftNext", smtp_user))
-    message['To'] = formataddr((name, name))
+    message['To'] = Header(name, 'utf-8')
     message['Subject'] = Header(subject, 'utf-8')
     return message
 

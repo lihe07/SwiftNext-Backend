@@ -1,13 +1,14 @@
 import asyncio
 from json import dumps
 
-from sanic import Sanic, json, Request
+from sanic import Sanic, json, Request, Blueprint
 from sanic.log import logger
 from copy import deepcopy
 
+app = Blueprint('apis', url_prefix='/api')
+
 
 def register_apis():
-    app = Sanic.get_app("SwiftNext")
     logger.info("注册API / => index")
 
     @app.get("/")
@@ -35,6 +36,8 @@ def register_apis():
     import apis.detector
     logger.info("注册调查点类API /positions/ => positions")
     import apis.positions
+    logger.info("注册API蓝图 /apis/ => apis")
+    Sanic.get_app("SwiftNext").blueprint(app)
 
 
 # 函数装饰器 用于检查用户权限

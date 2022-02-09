@@ -5,10 +5,11 @@ import bson.errors
 from sanic import Sanic, response, Request, HTTPResponse, json
 from config import database
 from bson import ObjectId
-from apis import perm
+from apis import perm, app
 from .users import randstr
 
-app = Sanic.get_app("SwiftNext")
+
+# app = Sanic.get_app("SwiftNext")
 
 
 @app.get("/groups/check_invitation/<invitation_id>")
@@ -351,3 +352,13 @@ async def quit_group(request: Request, group_id: str, member_id: str) -> HTTPRes
                 "en": "Group does not exist"
             }
         }, 404)
+
+
+@app.get("/groups")
+async def get_all_groups(request: Request) -> HTTPResponse:
+    groups = await database().groups.find({}).to_list(None)
+    for group in groups:
+        group['id'] = str(group['_id'])
+        group['created_at'] = group['created_at'].timestamp()
+        del group['_id']
+    return json(groups)

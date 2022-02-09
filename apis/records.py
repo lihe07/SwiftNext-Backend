@@ -3,9 +3,9 @@ import datetime
 from sanic import Sanic, json, Request, HTTPResponse, response
 from config import database
 from bson import ObjectId
-from apis import perm
+from apis import perm, app
 
-app = Sanic.get_app("SwiftNext")
+
 
 
 @app.get("/records/<record_id>")

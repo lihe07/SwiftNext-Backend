@@ -4,9 +4,7 @@ import bson.errors
 from sanic import Sanic, json, Request, HTTPResponse, response
 from config import database
 from bson import ObjectId
-from apis import perm
-
-app = Sanic.get_app("SwiftNext")
+from apis import perm, app
 
 
 @app.get("/positions/<position_id>")
