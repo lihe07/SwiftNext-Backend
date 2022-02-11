@@ -253,6 +253,7 @@ tasks_listening = {
 tasks_futures = {
 
 }
+_app = Sanic.get_app("SwiftNext")
 app.ctx.tasks_futures = tasks_futures
 app.ctx.tasks_listening = tasks_listening
 
@@ -267,11 +268,12 @@ async def update_status(ws, data):
     try:
         await ws.send(dumps(data))
     except Exception as e:
+        logger.warning("更新任务状态失败：{}".format(e))
         pass
 
 
 async def do_detect(image_path, task_id, ws):
-    await update_status(task_id, {"status": "processing"})
+    await update_status(ws, {"status": "processing"})
     result = await pipeline.predict(cv2.imread(image_path), task_id, ws)
     image_shape = cv2.imread(image_path).shape
     await database().detections.find_one_and_update({"_id": ObjectId(task_id)},
@@ -281,53 +283,8 @@ async def do_detect(image_path, task_id, ws):
                                                         "image_shape": image_shape
                                                     }})
 
-    await update_status(ws, {"status": "finished", "result": result, "task_id": task_id})
+    await update_status(ws, {"status": "finished", "task_id": task_id})
 
-
-#
-# @app.post("/detector/task")
-# @perm([1, 2, 3])
-# async def new_task(request: Request) -> HTTPResponse:
-#     """
-#     新建检测任务
-#     """
-#     global tasks_futures
-#     db = database()
-#     attachment = await db.storage.find_one({"_id": ObjectId(request.json.get("attachment_id"))})
-#     if attachment is None:
-#         return json({
-#             "code": 4,
-#             "message": {
-#                 "cn": "附件不存在",
-#                 "en": "Attachment not found"
-#             }
-#         }, 404)
-#     if "image" not in attachment['mime_type']:
-#         return json({
-#             "code": 4,
-#             "message": {
-#                 "cn": "附件不是图片",
-#                 "en": "Attachment is not an image"
-#             }
-#         }, 400)
-#
-#     image_path = attachment["local_path"]
-#
-#     result = await db.detections.insert_one({"status": "listed", "attachment": request.json.get("attachment_id")})
-#     task_id = str(result.inserted_id)
-#
-#     # 开始检测
-#     future = app.add_task(
-#         do_detect(image_path, task_id)
-#     )
-#     tasks_futures[task_id] = future
-#
-#     # 这里不awaiting，因为这个任务是异步的
-#
-#     return json({
-#         "id": task_id,
-#     }, 201)
-#
 
 @app.websocket("/detector/task/ws")
 @perm([1, 2, 3])
@@ -371,12 +328,14 @@ async def new_task_and_monitor(request: Request, ws: WebSocket):
     task_id = str(result.inserted_id)
     logger.info("创建了一个新的任务，id: %s", task_id)
 
-    future = app.add_task(do_detect(attachment["local_path"], task_id, ws))
+    future = _app.add_task(do_detect(attachment["local_path"], task_id, ws))
 
     while not future.done():
-        await asyncio.sleep(0.5)
-        await ws.ping()
+        await asyncio.sleep(1)
+        await ws.send(dumps({"ping": "Hello!!"}))
 
+    await asyncio.sleep(1)
+    logger.info("关闭连接")
     await ws.close()
 
 

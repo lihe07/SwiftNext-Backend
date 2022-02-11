@@ -31,9 +31,11 @@ async def get_user_record(request: Request, uid: str) -> HTTPResponse:
         {"collaborators": {"$elemMatch": {"$eq": uid}}}).to_list(None)  # 所有collaborators中包含uid的记录
     for record in records:
         record['id'] = str(record['_id'])
+        record['time'] = record['time'].timestamp()
         del record['_id']
     for record in engaged_records:
         record['id'] = str(record['_id'])
+        record['time'] = record['time'].timestamp()
         del record['_id']
     return json({
         "records": records,
@@ -222,6 +224,10 @@ async def get_records(request: Request) -> HTTPResponse:
         nums = None
     # 执行查询
     records = await database().records.find(query).to_list(nums)
+    for record in records:
+        record['id'] = str(record['_id'])
+        del record['_id']
+        record['time'] = int(record['time'].timestamp())
     return json(records)
 
 

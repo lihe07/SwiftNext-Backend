@@ -1,25 +1,30 @@
 """
 错误响应函数
 """
-from sanic import Sanic, json
+import os.path
+
+from sanic import Sanic, json, response
 from sanic.exceptions import *
+
+import config
 
 app = Sanic.get_app("SwiftNext")
 
 
 @app.exception(NotFound)
 def not_found(request, exception):
-    return json({
-        "code": 404,
-        "description": {
-            "url": request.url,
-            "method": request.method,
-        },
-        "message": {
-            "cn": "找不到对应资源!",
-            "en": "Resource not found!"
-        }
-    }, status=404)
+    # return json({
+    #     "code": 404,
+    #     "description": {
+    #         "url": request.url,
+    #         "method": request.method,
+    #     },
+    #     "message": {
+    #         "cn": "找不到对应资源!",
+    #         "en": "Resource not found!"
+    #     }
+    # }, status=404)
+    return response.file(os.path.join(config.dist_path, "index.html"))
 
 
 @app.exception(ServerError)

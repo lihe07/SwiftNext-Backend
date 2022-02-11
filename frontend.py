@@ -1,5 +1,5 @@
 import requests
-from sanic import Sanic, Request, HTTPResponse
+from sanic import Sanic, Request, HTTPResponse, response
 import config
 import os
 
@@ -9,8 +9,4 @@ app.static("/", os.path.join(config.dist_path, "index.html"))
 
 app.static("/favicon.ico", os.path.join(config.dist_path, "favicon.ico"))
 
-app.static("/*", os.path.join(config.dist_path, "index.html"), )
-
 app.static("/assets", config.assets_path)
-
-
