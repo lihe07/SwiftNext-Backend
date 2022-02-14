@@ -1,6 +1,6 @@
 import datetime
 
-from mongoengine import Document, StringField, DateTimeField, ListField, ObjectIdField, IntField, BooleanField
+from mongoengine import Document, StringField, DateTimeField, ListField, FloatField, IntField, BooleanField
 
 import config
 from models.storage import Attachment
@@ -25,6 +25,10 @@ class Detection(Document):
     created_at = DateTimeField(required=True, default=datetime.datetime.utcnow)
     status = StringField(required=True, default="pending")
     attachment = StringField(required=True)
+    result = ListField(required=False, default=[])
+    current = IntField(required=False, default=0)
+    total = IntField(required=False, default=0)
+    threshold = FloatField(required=False, default=0.5)
     # 一些检测配置部分
     window_size = IntField(required=True)
     overlap = IntField(required=True)
@@ -47,15 +51,17 @@ class Detection(Document):
 
     def get_image_path(self) -> str:
         attachment = Attachment.objects(id=self.attachment).first()
+        if attachment is None:
+            raise Exception("Attachment not found: {}".format(self.attachment))
         return attachment.local_path
 
 
 class ProcessingDetection(Detection):
-    status = StringField(required=True, default="processing")
-    current = IntField(required=True, default=0)
-    total = IntField(required=True, default=0)
+    status = StringField(required=False, default="processing")
+    current = IntField(required=False, default=0)
+    total = IntField(required=False, default=0)
 
 
 class FinishedDetection(Detection):
-    status = StringField(required=True, default="finished")
-    result = ListField(required=True)
+    status = StringField(required=False, default="finished")
+    result = ListField(required=False)

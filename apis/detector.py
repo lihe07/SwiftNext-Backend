@@ -12,8 +12,13 @@ from apis import perm, storage, app
 from config import database
 from models.detections import Detection, FinishedDetection, ProcessingDetection
 
+from models import to_response
+from concurrent.futures import ThreadPoolExecutor
+
 # Rust FFI
 import swift_det_lib
+
+
 
 _app = Sanic.get_app("SwiftNext")
 
@@ -31,19 +36,29 @@ async def create_task(request: Request) -> HTTPResponse:
         task_id = task.id
 
         def progress_callback(current, total):
-            _task = ProcessingDetection.objects(id=task_id).first()
+            logger.info("Task: {} Progress: {}/{}".format(task_id, current, total))
+            _task = Detection.objects(id=str(task_id)).first()
+            if _task is None:
+                raise RuntimeError("Task: {} Not Found, cancelled?".format(task_id))
+            _task.status = "processing"
             _task.current = current
             _task.total = total
             _task.save()
 
         async def do_detect():
-            swift_det_lib.do_detect(task.get_image_path(), detect_config, progress_callback)
+            logger.info("Task: {} Start Detecting".format(task_id))
+            result = swift_det_lib.do_detect(task.get_image_path(), detect_config, progress_callback, do_nms=False)
+            logger.info("Task: {} Finished Detecting".format(task_id))
+            _task = Detection.objects(id=str(task_id)).first()
+            _task.status = "finished"
+            _task.result = result
+            _task.save()
 
         # 启动一个新任务
-        _ = _app.add_task(do_detect(), name="detect_task_" + task_id)
+        _ = _app.add_task(do_detect())
         # 无需await
         return json({
-            "task_id": task_id,
+            "task_id": str(task_id),
         })
     except bson.errors.InvalidDocument as e:
         logger.error(e)
@@ -108,14 +123,23 @@ async def get_task_info(request: Request, task_id: str) -> HTTPResponse:
                 "en": "Task not found"
             }
         }, 404)
-    return json(task)
+    if request.args.get("threshold") is not None:
+        threshold = float(request.args.get("threshold"))
+    else:
+        threshold = task.threshold
+    boxes = []
+    for bbox in task.result:
+        if bbox["score"] >= threshold:
+            boxes.append(bbox)
+    task.result = boxes
+
+    return to_response(task)
 
 
 @app.put("/detector/<task_id>")
 @perm([1, 2, 3])
 async def update_task_result(request: Request, task_id: str) -> HTTPResponse:
-    new_result = request.json
-    detection = FinishedDetection.objects(id=task_id).first()
+    detection = Detection.objects(id=task_id).first()
     if detection is None:
         return json({
             "code": 4,
@@ -125,15 +149,18 @@ async def update_task_result(request: Request, task_id: str) -> HTTPResponse:
             }
         }, 404)
     # 执行修改
-    detection.result = new_result
+    if request.json.get("result") is not None:
+        detection.result = request.json.get("result")
+    if request.json.get("threshold") is not None:
+        detection.threshold = request.json.get("threshold")
     detection.save()
-    return json(detection.reload())
+    return to_response(detection.reload())
 
 
 @app.delete("/detector/<task_id>")
 @perm([1, 2, 3])
 async def delete_task(request: Request, task_id: str) -> HTTPResponse:
-    x = FinishedDetection.objects(id=task_id).first()
+    x = Detection.objects(id=task_id).first()
     if x is None:
         return json({
             "code": 4,
@@ -172,5 +199,4 @@ async def compute_number(request: Request) -> HTTPResponse:
 async def get_user_detections(request: Request) -> HTTPResponse:
     uid = request.ctx.session['user']['uid']
     detections = Detection.objects(creator=uid)
-    detections = [d for d in detections]
-    return json(detections)
+    return to_response(detections)

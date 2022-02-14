@@ -9,3 +9,7 @@ class Attachment(Document):
     owner = StringField(required=True)
     md5 = StringField(required=True)
     local_path = StringField(required=True)
+
+    meta = {
+        'collection': 'storage',
+    }
