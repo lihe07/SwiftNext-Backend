@@ -6,8 +6,10 @@ from email.mime.text import MIMEText
 from email.header import Header
 from email.utils import formataddr
 
+from mongoengine import connect
+
 # 数据库位置
-mongo_uri = 'mongodb://192.168.1.42:27017/'
+mongo_uri = 'mongodb://192.168.1.42:27017/swiftnext'
 
 # 存储用户上传内容
 storage_dir = './storage'
@@ -39,6 +41,11 @@ model_path = "./model.best.onnx"
 dist_path = "../SwiftNext-Frontend/dist"
 # assets的位置
 assets_path = "../SwiftNext-Frontend/dist/assets"
+# 模型的位置
+resnet18 = "./res18.best.onnx"
+darknet = "./dark.best.onnx"
+
+connect(host=mongo_uri)
 
 
 def database():

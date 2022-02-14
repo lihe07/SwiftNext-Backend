@@ -20,9 +20,7 @@ import config
 import mimetypes
 
 
-
-
-@app.post("/storage", stream=False)
+@app.post("/storage")
 @perm([1, 2, 3])
 async def upload(request: Request) -> HTTPResponse:
     """
@@ -237,6 +235,7 @@ async def get_sized_image(request: Request, fid: str, width: int, height: int):
         "Content-Type": "image/jpeg",
         "Cache-Control": "max-age=86400",  # 控制缓存 1天
     })
+
 
 @app.get("/storage/download/<fid>")
 async def get_download(request: Request, fid: str):

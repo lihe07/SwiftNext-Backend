@@ -1,20 +1,30 @@
+import datetime
+
 from sanic import Sanic, json, Request, HTTPResponse, response
 from config import database
 from apis import perm, app
 from bson import ObjectId
 
 
-
 @app.get("/projects")
+@perm([1, 2, 3])
 async def get_all_projects(_) -> HTTPResponse:
     projects = await database().projects.find({}).to_list(None)
-    processed = []
     for proj in projects:
         proj['id'] = str(proj['_id'])
+        proj['start_time'] = proj['start_time'].timestamp()
         del proj['_id']
-        processed.append(proj)
+    return json(projects)
 
-    return json(processed)
+
+@app.get("/projects/running")
+@perm([1, 2, 3])
+async def get_running_project(_) -> HTTPResponse:
+    running_projects = await database().projects.find({'running': True}).to_list(None)
+    for proj in running_projects:
+        proj['id'] = str(proj['_id'])
+        del proj['_id']
+    return json(running_projects)
 
 
 @app.post("/projects")
@@ -53,6 +63,7 @@ async def create_project(request: Request) -> HTTPResponse:
             }
         }, 406)
     data = request.json
+    data['start_time'] = datetime.datetime.fromtimestamp(data['start_time'])
     project = await database().projects.insert_one(data)
     return json({"id": str(project.inserted_id)})
 
@@ -102,6 +113,7 @@ async def get_project(request: Request, project_id: str) -> HTTPResponse:
             }
         }, 404)
     project['id'] = str(project['_id'])
+    project['start_time'] = project['start_time'].timestamp()
     del project['_id']
     return json(project)
 
@@ -112,9 +124,10 @@ async def patch_project(request: Request, project_id: str) -> HTTPResponse:
     # 允许 title, start_week, duration, running 字段
     if 'title' in request.json.keys():
         await database().projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"title": request.json['title']}})
-    if 'start_week' in request.json.keys():
+    if 'start_time' in request.json.keys():
+        start_time = datetime.datetime.fromtimestamp(request.json['start_time'])
         await database().projects.update_one({"_id": ObjectId(project_id)},
-                                             {"$set": {"start_week": request.json['start_week']}})
+                                             {"$set": {"start_time": start_time}})
     if 'duration' in request.json.keys():
         await database().projects.update_one({"_id": ObjectId(project_id)},
                                              {"$set": {"duration": request.json['duration']}})
@@ -122,6 +135,7 @@ async def patch_project(request: Request, project_id: str) -> HTTPResponse:
         await set_running(request, project_id)
 
     return response.empty()
+
 
 @app.delete("/projects/<project_id>")
 @perm([3])
