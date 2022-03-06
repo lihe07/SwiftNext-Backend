@@ -1,6 +1,7 @@
 from json import dumps, loads
 
 import bson.errors
+import cv2
 import mongoengine.errors
 from bson import ObjectId
 from sanic import Sanic, Request, HTTPResponse, json, response
@@ -18,19 +19,17 @@ from concurrent.futures import ThreadPoolExecutor
 # Rust FFI
 import swift_det_lib
 
-
-
 _app = Sanic.get_app("SwiftNext")
 
 
 @app.post("/detector")
-@perm([1, 2, 3])
 async def create_task(request: Request) -> HTTPResponse:
     """
     新创建任务
     """
     try:
-        task = Detection(**request.json, creator=request.ctx.session['user']['uid'])
+        # task = Detection(**request.json, creator=request.ctx.session['user']['uid'])
+        task = Detection(**request.json, creator="anonymous")
         task.save()
         detect_config = task.get_detect_config()
         task_id = task.id
@@ -72,7 +71,6 @@ async def create_task(request: Request) -> HTTPResponse:
 
 
 @app.get("/detector/<task_id>/status")
-@perm([1, 2, 3])
 async def get_task_status(request: Request, task_id: str) -> HTTPResponse:
     """
     获取某个任务的状态
@@ -102,7 +100,6 @@ async def get_task_status(request: Request, task_id: str) -> HTTPResponse:
 
 
 @app.get("/detector/<task_id>")
-@perm([1, 2, 3])
 async def get_task_info(request: Request, task_id: str) -> HTTPResponse:
     try:
         task = Detection.objects(id=task_id).first()
@@ -136,8 +133,46 @@ async def get_task_info(request: Request, task_id: str) -> HTTPResponse:
     return to_response(task)
 
 
+@app.get("/detector/<task_id>/draw")
+async def draw_boxes(request: Request, task_id: str) -> HTTPResponse:
+    try:
+        task = Detection.objects(id=task_id).first()
+    except Exception as e:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "参数错误",
+                "en": "Invalid parameters"
+            },
+            "description": str(e)
+        }, 400)
+    if task is None:
+        return json({
+            "code": 4,
+            "message": {
+                "cn": "任务不存在",
+                "en": "Task not found"
+            }
+        }, 404)
+    if request.args.get("threshold") is not None:
+        threshold = float(request.args.get("threshold"))
+    else:
+        threshold = task.threshold
+    boxes = []
+    image = cv2.imread(task.get_image_path())
+    for bbox in task.result:
+        if bbox["score"] >= threshold:
+            cv2.rectangle(image, (bbox["x_min"], bbox["y_min"]), (bbox["x_max"], bbox["y_max"]), (0, 255, 0), 2)
+            cv2.putText(image, "{}%".format(int(bbox["score"] * 100)), (bbox["x_min"], bbox["y_min"])
+                        , cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+    content = cv2.imencode('.jpg', image)[1].tobytes()
+    return response.raw(content, headers={
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "max-age=86400",  # 控制缓存 1天
+    })
+
+
 @app.put("/detector/<task_id>")
-@perm([1, 2, 3])
 async def update_task_result(request: Request, task_id: str) -> HTTPResponse:
     detection = Detection.objects(id=task_id).first()
     if detection is None:
@@ -158,7 +193,6 @@ async def update_task_result(request: Request, task_id: str) -> HTTPResponse:
 
 
 @app.delete("/detector/<task_id>")
-@perm([1, 2, 3])
 async def delete_task(request: Request, task_id: str) -> HTTPResponse:
     x = Detection.objects(id=task_id).first()
     if x is None:

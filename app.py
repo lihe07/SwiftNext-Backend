@@ -1,4 +1,4 @@
-import socketio
+
 from sanic import Sanic, Request
 import config
 from sanic.log import logger
@@ -10,13 +10,9 @@ app = Sanic("SwiftNext")
 app.config['REQUEST_MAX_SIZE'] = 200 * 1024 * 1024
 app.config['CORS_SUPPORTS_CREDENTIALS'] = True
 
-CORS(app, automatic_options=True)
+CORS_OPTIONS = {"resources": r'/*', "origins": "*", "methods": ["GET", "POST", "HEAD", "OPTIONS", "DELETE", "PUT", "PATCH"]}
 
-logger.info("创建SocketIO实例")
-sio = socketio.AsyncServer(async_mode='sanic', cors_allowed_origins=[], cors_credentials=True)
-
-app.ctx.sio = sio
-sio.attach(app)
+CORS(app, automatic_options=True, methods=["GET", "POST", "HEAD", "OPTIONS", "DELETE", "PUT", "PATCH"])
 
 logger.info("注册错误处理器")
 __import__("errors")
@@ -35,4 +31,4 @@ apis.register_apis()
 
 if __name__ == '__main__':
     logger.info(f"服务运行在 {config.host}:{config.port}")
-    app.run(host=config.host, port=config.port, workers=config.workers, auto_reload=True, ssl="./ssl")
+    app.run(host=config.host, port=config.port, workers=config.workers, auto_reload=True)

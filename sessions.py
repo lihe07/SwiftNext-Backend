@@ -93,8 +93,8 @@ async def check_fingerprint(request: Request, response: HTTPResponse):
             await database().sessions.delete_one({"fingerprint": request.ctx.session['fingerprint']})
             response.cookies["fingerprint"] = request.ctx.session.get("fingerprint")
             response.cookies["fingerprint"]["samesite"] = "None"
-            response.cookies["fingerprint"]["secure"] = True
-            response.cookies["fingerprint"]["domain"] = ".bwrrc.org.cn"
+            # response.cookies["fingerprint"]["secure"] = True
+            # response.cookies["fingerprint"]["domain"] = ".bwrrc.org.cn"
             # response.cookies["fingerprint"]["domain"] = "localhost:3000"
             sess = request.ctx.session
             if 'user' in sess.keys():

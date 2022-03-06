@@ -21,12 +21,11 @@ import mimetypes
 
 
 @app.post("/storage")
-@perm([1, 2, 3])
 async def upload(request: Request) -> HTTPResponse:
     """
     上传新的附件
+    暂时允许所有权限用户上传
     """
-
     if request.files.get("file") is not None:
         file = request.files.get("file")
         logger.info(file.type)
@@ -58,7 +57,7 @@ async def upload(request: Request) -> HTTPResponse:
             "local_path": path,
             "mime_type": mimetype,
             "created_at": datetime.datetime.utcnow(),
-            "owner": request.ctx.session['user']['uid'],
+            # "owner": request.ctx.session['user']['uid'],
             "md5": md5
         })
 

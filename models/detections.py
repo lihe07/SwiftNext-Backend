@@ -28,7 +28,7 @@ class Detection(Document):
     result = ListField(required=False, default=[])
     current = IntField(required=False, default=0)
     total = IntField(required=False, default=0)
-    threshold = FloatField(required=False, default=0.5)
+    threshold = FloatField(required=False, default=0.3)
     # 一些检测配置部分
     window_size = IntField(required=True)
     overlap = IntField(required=True)

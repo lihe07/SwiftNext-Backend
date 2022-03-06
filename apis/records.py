@@ -6,8 +6,6 @@ from bson import ObjectId
 from apis import perm, app
 
 
-
-
 @app.get("/records/<record_id>")
 @perm([1, 2, 3])
 async def get_record(request: Request, record_id: str) -> HTTPResponse:
@@ -20,6 +18,10 @@ async def get_record(request: Request, record_id: str) -> HTTPResponse:
                 "en": "No record found"
             }
         }, 404)
+    record['id'] = str(record['_id'])
+    del record['_id']
+    record['time'] = record['time'].timestamp()
+
     return json(record)
 
 
@@ -231,7 +233,7 @@ async def get_records(request: Request) -> HTTPResponse:
     return json(records)
 
 
-@app.delete("/records/{record_id}")
+@app.delete("/records/<record_id>")
 @perm([1, 2, 3])
 async def delete_record(request: Request, record_id: str) -> HTTPResponse:
     """
@@ -240,6 +242,7 @@ async def delete_record(request: Request, record_id: str) -> HTTPResponse:
     :param record_id:
     :return:
     """
+    print("delete record")
     record = await database().records.find_one({"_id": ObjectId(record_id)})
     if not record:
         return json({

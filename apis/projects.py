@@ -23,6 +23,7 @@ async def get_running_project(_) -> HTTPResponse:
     running_projects = await database().projects.find({'running': True}).to_list(None)
     for proj in running_projects:
         proj['id'] = str(proj['_id'])
+        proj['start_time'] = proj['start_time'].timestamp()
         del proj['_id']
     return json(running_projects)
 
